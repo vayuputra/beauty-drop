@@ -354,6 +354,38 @@ async function seedDatabase() {
       logoUrl: "https://cdn.purplle.com/static/img/logo.svg"
     }).returning();
 
+    // Additional India retailers for monetization
+    const [amazonIn] = await db.insert(retailers).values({
+      name: "Amazon India",
+      country: "IN",
+      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/1200px-Amazon_logo.svg.png"
+    }).returning();
+
+    const [myntra] = await db.insert(retailers).values({
+      name: "Myntra",
+      country: "IN",
+      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Myntra_logo.png/800px-Myntra_logo.png"
+    }).returning();
+
+    const [tataCliq] = await db.insert(retailers).values({
+      name: "Tata CLiQ",
+      country: "IN",
+      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Tata_CLiQ_logo.svg/800px-Tata_CLiQ_logo.svg.png"
+    }).returning();
+
+    const [sephoraIn] = await db.insert(retailers).values({
+      name: "Sephora India",
+      country: "IN",
+      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Sephora_logo.svg/2560px-Sephora_logo.svg.png"
+    }).returning();
+
+    // Additional US retailers
+    const [amazonUs] = await db.insert(retailers).values({
+      name: "Amazon",
+      country: "US",
+      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/1200px-Amazon_logo.svg.png"
+    }).returning();
+
     // US Products with working images and video data
     const usProductData = [
       {
@@ -651,10 +683,10 @@ async function seedDatabase() {
             creatorFollowers: "450K"
           },
           {
-            platform: "tiktok",
+            platform: "instagram",
             title: "Best budget moisturizer in India",
-            videoUrl: "https://www.tiktok.com/@minimalist",
-            embedUrl: "https://www.tiktok.com/embed/v2/7700000000000000000",
+            videoUrl: "https://www.instagram.com/minimalist",
+            embedUrl: "https://www.instagram.com/reel/minimalist/embed",
             thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
             creatorName: "Skin by Dr. V",
             creatorHandle: "@skinbydrv",
@@ -777,10 +809,10 @@ async function seedDatabase() {
             creatorFollowers: "1.8M"
           },
           {
-            platform: "tiktok",
+            platform: "instagram",
             title: "Smudge test in Mumbai humidity",
-            videoUrl: "https://www.tiktok.com/@maybellineindia",
-            embedUrl: "https://www.tiktok.com/embed/v2/7800000000000000000",
+            videoUrl: "https://www.instagram.com/maybellineindia",
+            embedUrl: "https://www.instagram.com/reel/kajal/embed",
             thumbnailUrl: "https://images.unsplash.com/photo-1597225244660-1cd128c64284?w=300&h=400&fit=crop",
             creatorName: "Nidhi Katiyar",
             creatorHandle: "@nidhikatiyar",
@@ -848,6 +880,15 @@ async function seedDatabase() {
           affiliateUrl: `https://www.ulta.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
         });
       }
+      if (newProduct && amazonUs) {
+        await db.insert(productOffers).values({
+          productId: newProduct.id,
+          retailerId: amazonUs.id,
+          price: prod.price * 0.92,
+          currency: prod.currency,
+          affiliateUrl: `https://www.amazon.com/dp/${prod.name.toLowerCase().replace(/\s+/g, '-')}?tag=beautydrop-20`
+        });
+      }
       
       // Insert videos with influencer info (US only)
       if (newProduct && prod.videos) {
@@ -899,6 +940,42 @@ async function seedDatabase() {
           price: prod.price * 0.9,
           currency: prod.currency,
           affiliateUrl: `https://www.purplle.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+        });
+      }
+      if (newProduct && amazonIn) {
+        await db.insert(productOffers).values({
+          productId: newProduct.id,
+          retailerId: amazonIn.id,
+          price: prod.price * 0.95,
+          currency: prod.currency,
+          affiliateUrl: `https://www.amazon.in/dp/${prod.name.toLowerCase().replace(/\s+/g, '-')}?tag=beautydrop-21`
+        });
+      }
+      if (newProduct && myntra) {
+        await db.insert(productOffers).values({
+          productId: newProduct.id,
+          retailerId: myntra.id,
+          price: prod.price * 0.88,
+          currency: prod.currency,
+          affiliateUrl: `https://www.myntra.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+        });
+      }
+      if (newProduct && tataCliq) {
+        await db.insert(productOffers).values({
+          productId: newProduct.id,
+          retailerId: tataCliq.id,
+          price: prod.price * 0.93,
+          currency: prod.currency,
+          affiliateUrl: `https://www.tatacliq.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+        });
+      }
+      if (newProduct && sephoraIn && prod.brand !== "Lakme" && prod.brand !== "Maybelline") {
+        await db.insert(productOffers).values({
+          productId: newProduct.id,
+          retailerId: sephoraIn.id,
+          price: prod.price * 1.05,
+          currency: prod.currency,
+          affiliateUrl: `https://www.sephora.in/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
         });
       }
       

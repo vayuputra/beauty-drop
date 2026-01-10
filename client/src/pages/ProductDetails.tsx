@@ -5,7 +5,6 @@ import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles }
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
@@ -14,7 +13,6 @@ export default function ProductDetails() {
   const { data: product, isLoading, refetch } = useProduct(id);
   const trackClick = useTrackClick();
   const refreshInfluencers = useRefreshInfluencers();
-  const [showVideoEmbed, setShowVideoEmbed] = useState<number | null>(null);
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -52,23 +50,6 @@ export default function ProductDetails() {
       case 'reddit': return 'text-orange-500';
       default: return 'text-foreground';
     }
-  };
-
-  const isYouTubeUrl = (url: string) => {
-    return url?.includes('youtube.com') || url?.includes('youtu.be');
-  };
-
-  const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return null;
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
-    ];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return `https://www.youtube.com/embed/${match[1]}`;
-    }
-    return null;
   };
 
   const allInfluencers = [
@@ -179,21 +160,15 @@ export default function ProductDetails() {
               {allInfluencers.slice(0, 5).map((influencer: any, index: number) => {
                 const PlatformIcon = getPlatformIcon(influencer.platform);
                 const platformColor = getPlatformColor(influencer.platform);
-                const embedUrl = influencer.embedUrl || getYouTubeEmbedUrl(influencer.videoUrl);
-                const canEmbed = isYouTubeUrl(influencer.videoUrl) && embedUrl;
-                const isExpanded = showVideoEmbed === index;
                 
                 return (
                   <div 
                     key={influencer.id || index}
-                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden"
+                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden cursor-pointer hover:border-accent/50 transition-colors"
                     data-testid={`influencer-card-${index}`}
+                    onClick={() => window.open(influencer.videoUrl, '_blank')}
                   >
-                    {/* Influencer Info Row */}
-                    <div 
-                      className="flex gap-4 p-3 cursor-pointer hover:bg-secondary/30 transition-colors"
-                      onClick={() => canEmbed ? setShowVideoEmbed(isExpanded ? null : index) : window.open(influencer.videoUrl, '_blank')}
-                    >
+                    <div className="flex gap-4 p-3">
                       {/* Thumbnail */}
                       <div className="relative flex-shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-secondary">
                         {influencer.thumbnailUrl ? (
@@ -240,38 +215,9 @@ export default function ProductDetails() {
                       
                       {/* External link indicator */}
                       <div className="flex items-center">
-                        {canEmbed ? (
-                          <motion.div
-                            animate={{ rotate: isExpanded ? 180 : 0 }}
-                            className="text-muted-foreground"
-                          >
-                            <Play size={16} className={isExpanded ? 'text-accent' : ''} />
-                          </motion.div>
-                        ) : (
-                          <ExternalLink size={14} className="text-muted-foreground" />
-                        )}
+                        <ExternalLink size={14} className="text-muted-foreground" />
                       </div>
                     </div>
-
-                    {/* Embedded Video (YouTube only) */}
-                    {canEmbed && isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-border"
-                      >
-                        <div className="aspect-video w-full">
-                          <iframe
-                            src={embedUrl}
-                            title={influencer.videoTitle || 'Video review'}
-                            className="w-full h-full"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          />
-                        </div>
-                      </motion.div>
-                    )}
                   </div>
                 );
               })}
