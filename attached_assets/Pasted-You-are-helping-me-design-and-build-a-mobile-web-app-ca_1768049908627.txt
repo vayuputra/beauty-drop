@@ -1,0 +1,169 @@
+You are helping me design and build a mobile + web app called “Beauty Drop” for the **Indian and US** markets only.
+
+## 1. Product concept
+
+Build an app that sends users weekly “drops” of the most trending **makeup and beauty** products, tailored to them, with:
+
+- Curated product list for the week (“Top trending this week”)  
+- For each product:  
+  - Product image, name, short description, key claims (e.g., matte, long‑wear, hydrating)  
+  - Category (lipstick, foundation, skincare, haircare, fragrance, etc.)  
+  - Tags: price band (budget/mid/premium), skin type, finish, concern (acne, pigment, etc.)  
+  - 2–3 embedded or linked creator/review/tutorial videos (YouTube/shorts, Instagram Reels, TikTok where allowed)  
+  - Price comparison block for **multiple retailers** in that country  
+  - “Buy now” buttons that use **affiliate links**  
+- Push notifications when a new weekly drop is live, and optional category-specific notifications
+
+The app is **affiliate + advertising** based. No direct checkout; all purchases happen on external retailers.
+
+Focus countries:
+
+- India: Nykaa, Amazon India, Myntra, Ajio (as available via affiliate programs)  
+- US: Amazon US, Sephora, Ulta, other major retailers via affiliate networks  
+
+The UI should be clean, mobile‑first, and optimized for **women beauty shoppers**.
+
+## 2. Target platforms and stack
+
+- Platforms:
+  - Mobile app (Android and iOS)
+  - Basic responsive web app (same core features)
+- Stack (if you need to choose):
+  - Frontend: React Native (mobile) + React/Next.js (web)  
+  - Backend: Node.js + TypeScript  
+  - Database: PostgreSQL  
+  - Authentication: email + social login (Google/Apple), country selection (India/US)
+
+If the platform prefers its own stack, keep the architecture equivalent.
+
+## 3. Core user flows
+
+Implement these flows:
+
+1. **Onboarding**
+   - User selects:
+     - Country: India or US  
+     - Beauty interests: makeup, skincare, haircare, fragrance (multi‑select)  
+     - Budget range: low / medium / high  
+     - Skin type (for skincare): dry / oily / combination / sensitive  
+     - Optional: skin tone band (fair, medium, deep)  
+   - Store preferences in user profile to personalize drops.
+
+2. **Weekly drop feed**
+   - Home screen shows the current week’s curated list:
+     - “This week’s top trends” section
+     - Filter chips: category, price band, tags
+   - Each product card shows:
+     - Image, brand, product name
+     - 1–2 key highlights
+     - Starting price (lowest available across retailers for that country)
+   - Tap to open **Product Detail**.
+
+3. **Product detail**
+   - Sections:
+     - Product header: image, full name, brand, key claims
+     - Tags: country, category, skin type, finish, etc.
+     - “Why it’s trending” (short explanation text)
+     - Creator/review videos: list of 2–3 links (YouTube, Reels, Shorts) with thumbnail and platform icon
+     - Price comparison:
+       - Table listing retailers for that country with:
+         - Retailer name
+         - Price
+         - Shipping/prime/best offer text if available
+         - “Buy” button that opens the **affiliate link** in an in‑app browser or external browser
+   - Track clicks on each “Buy” button.
+
+4. **Notifications**
+   - Weekly push notification: “Your new beauty drop for this week is live”
+   - Optional:
+     - Category‑specific notifications (e.g., only “lipstick” or “skincare”)
+   - Simple in‑app settings page to toggle:
+     - Weekly drops on/off
+     - Category alerts
+     - Country switching (India ↔ US) if a user travels or uses both
+
+5. **Basic analytics (admin side)**
+   - Simple admin dashboard (could be web‑only) with:
+     - Number of users per country
+     - Weekly active users
+     - Clicks per product and per retailer
+     - Top converting products and categories
+
+## 4. Data and integrations (MVP assumptions)
+
+For the **first version**, do NOT over‑engineer. Assume:
+
+- Product catalog:
+  - Use a simple backend model for products, manually seeded with CSV/JSON initially:
+    - id, name, brand, country (IN/US), category, tags, image_url, description, why_trending
+  - Support separate lists for India and US.
+
+- Price comparison:
+  - Design backend models for:
+    - retailers (name, country, logo)
+    - product_offers (product_id, retailer_id, url, affiliate_url, price, currency, last_updated)
+  - Assume prices are either:
+    - Entered manually in an admin UI, or
+    - Pulled by a background job from some external API or feed later.
+  - For now, just build the **API endpoints** and UI that read from these tables.
+
+- Affiliate links:
+  - For each product‑retailer combination, store an `affiliate_url` string.
+  - When user taps “Buy”, always open `affiliate_url`.
+  - Add basic click tracking per product/retailer.
+
+- Videos:
+  - For each product, allow storing a list of external video URLs:
+    - YouTube video URL  
+    - Optional platform type field (youtube, instagram, tiktok)
+  - Frontend should render thumbnail + platform badge + “Watch” button that opens the link.
+
+## 5. Data model (guidance)
+
+Design a relational schema similar to:
+
+- users: id, email, country, preferences_json, created_at, updated_at
+- products: id, name, brand, category, country, description, image_url, tags_json, why_trending, created_at, updated_at
+- product_videos: id, product_id, platform, title, thumbnail_url, video_url
+- retailers: id, name, country, logo_url
+- product_offers: id, product_id, retailer_id, price, currency, affiliate_url, last_updated
+- clicks: id, user_id, product_id, retailer_id, clicked_at
+
+You can adjust field names/types as needed, but keep the relationships.
+
+## 6. APIs and screens
+
+Create REST or GraphQL endpoints (your choice) for:
+
+- Auth: sign up, login, logout
+- User:
+  - Get/update user profile and preferences
+- Drops:
+  - Get current weekly drop list for a given country and user preferences
+  - Get product detail (including videos and offers)
+- Admin:
+  - CRUD for products, product_videos, retailers, product_offers
+  - Simple metrics endpoints for clicks and counts
+
+Screens:
+
+1. Splash / onboarding
+2. Sign up / login
+3. Preferences setup (country + beauty preferences)
+4. Home: weekly drop list (with filters)
+5. Product detail
+6. Settings: notifications, preferences, country
+7. (Web/admin) CRUD pages for catalog and offers, basic analytics view
+
+## 7. Constraints and priorities for the builder
+
+- Prioritize **working end‑to‑end flows** over pixel-perfect UI.
+- Make it easy for me to:
+  - Manually add/edit products and offers for India and US
+  - Swap in real affiliate links later without code changes
+  - Swap from manual prices to API‑driven prices later
+- Code and configuration should be readable and logically structured.
+
+***
+
+Use this as the full specification. Generate the app structure, database, and API based on this, and produce any starter code, schema, and configuration needed.
