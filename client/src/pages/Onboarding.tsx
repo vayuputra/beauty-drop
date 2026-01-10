@@ -42,10 +42,10 @@ export default function Onboarding() {
 
   // Redirect if already onboarded
   useEffect(() => {
-    if (user?.country) {
+    if (user?.country && step === 1) {
       setLocation("/");
     }
-  }, [user, setLocation]);
+  }, [user, setLocation, step]);
 
   const handleNext = () => {
     if (step < 3) {

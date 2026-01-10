@@ -4,7 +4,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { clsx } from "clsx";
 
 const FILTERS = ["All", "Trending", "New", "Skincare", "Makeup"];
@@ -14,22 +14,18 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const [activeFilter, setActiveFilter] = useState("All");
 
+  useEffect(() => {
+    if (!userLoading && !user) {
+      setLocation("/auth");
+    } else if (!userLoading && user && !user.country) {
+      setLocation("/onboarding");
+    }
+  }, [user, userLoading, setLocation]);
+
   // Fetch drops based on user country preference
   const { data: products, isLoading: productsLoading } = useDrops(user?.country || undefined);
 
-  if (userLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
-
-  // Protect route
-  if (!user) {
-    setLocation("/auth");
-    return null;
-  }
-
-  // If no country set, send to onboarding
-  if (!userLoading && user && !user.country) {
-    setLocation("/onboarding");
-    return null;
-  }
+  if (userLoading || !user || !user.country) return <div className="min-h-screen bg-background"><Loader /></div>;
 
   return (
     <div className="min-h-screen bg-background pb-24">
