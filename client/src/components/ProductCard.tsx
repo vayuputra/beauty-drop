@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
 import { type ProductWithPriceRange } from "@shared/schema";
 import { motion } from "framer-motion";
+import { useState } from "react";
 
 interface ProductCardProps {
   product: ProductWithPriceRange;
@@ -14,8 +15,15 @@ function formatPrice(price: number, currency: string): string {
   return `$${price.toFixed(2)}`;
 }
 
+function getPlaceholderUrl(brand: string, name: string): string {
+  const text = encodeURIComponent(`${brand}\n${name.substring(0, 20)}`);
+  return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
+}
+
 export function ProductCard({ product }: ProductCardProps) {
-  const imageUrl = product.imageUrl || "https://placehold.co/600x600/fce7f3/db2777?text=Beauty+Drop";
+  const [imgError, setImgError] = useState(false);
+  const fallbackUrl = getPlaceholderUrl(product.brand, product.name);
+  const imageUrl = imgError ? fallbackUrl : (product.imageUrl || fallbackUrl);
 
   return (
     <Link href={`/product/${product.id}`} className="block group">
@@ -33,6 +41,7 @@ export function ProductCard({ product }: ProductCardProps) {
             alt={product.name}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
+            onError={() => setImgError(true)}
           />
           
           {/* Badge */}

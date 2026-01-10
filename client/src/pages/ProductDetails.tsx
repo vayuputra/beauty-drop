@@ -5,6 +5,12 @@ import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles }
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
+function getPlaceholderUrl(brand: string, name: string): string {
+  const text = encodeURIComponent(`${brand}\n${name.substring(0, 20)}`);
+  return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
+}
 
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
@@ -14,6 +20,7 @@ export default function ProductDetails() {
   const trackClick = useTrackClick();
   const refreshInfluencers = useRefreshInfluencers();
   const refreshImage = useRefreshImage();
+  const [imgError, setImgError] = useState(false);
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -32,11 +39,13 @@ export default function ProductDetails() {
   };
 
   const handleRefreshImage = async () => {
+    setImgError(false);
     await refreshImage.mutateAsync(product.id);
     refetch();
   };
 
-  const imageUrl = product.imageUrl || "https://placehold.co/600x600/fce7f3/db2777?text=Beauty+Drop";
+  const fallbackUrl = getPlaceholderUrl(product.brand, product.name);
+  const imageUrl = imgError ? fallbackUrl : (product.imageUrl || fallbackUrl);
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -96,6 +105,7 @@ export default function ProductDetails() {
           src={imageUrl} 
           alt={product.name}
           className="w-full h-full object-cover"
+          onError={() => setImgError(true)}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-90" />
       </div>
