@@ -4,7 +4,7 @@ import {
   type User, type InsertUser, type UpdateUserRequest,
   type Product, type ProductWithDetails, type InsertClick
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User
@@ -26,29 +26,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: UpdateUserRequest): Promise<User> {
-    // Check if user exists first
-    const existingUser = await this.getUser(id);
-    
-    if (existingUser) {
-      // Update existing user
-      const [user] = await db.update(users)
-        .set({
+    // Use Drizzle upsert with onConflictDoUpdate for proper handling
+    const [user] = await db.insert(users)
+      .values({
+        id,
+        ...updates,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
           ...updates,
           updatedAt: new Date()
-        })
-        .where(eq(users.id, id))
-        .returning();
-      return user;
-    } else {
-      // Insert new user (upsert behavior)
-      const [user] = await db.insert(users)
-        .values({
-          id,
-          ...updates
-        })
-        .returning();
-      return user;
-    }
+        }
+      })
+      .returning();
+    return user;
   }
 
   async getProductsByCountry(country: string): Promise<Product[]> {
