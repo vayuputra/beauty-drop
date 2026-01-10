@@ -14,18 +14,39 @@ export async function registerRoutes(
   // Set up authentication (Passport + Session)
   await setupAuth(app);
 
-  // User Routes
-  app.get(api.user.get.path, (req, res) => {
+  // User Routes - Return merged auth claims + DB user data
+  app.get(api.user.get.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
+    
+    const claims = (req.user as any).claims;
+    const userId = claims?.sub;
+    
+    if (!userId) return res.sendStatus(401);
+    
+    // Get DB user data (country, preferences)
+    const dbUser = await storage.getUser(userId);
+    
+    // Return merged object
+    res.json({
+      id: userId,
+      email: claims.email,
+      firstName: claims.first_name,
+      lastName: claims.last_name,
+      profileImageUrl: claims.profile_image_url,
+      country: dbUser?.country || null,
+      preferences: dbUser?.preferences || null,
+    });
   });
 
   app.patch(api.user.update.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.sendStatus(401);
+      
       const input = api.user.update.input.parse(req.body);
-      const user = await storage.updateUser(req.user.id, input);
+      const user = await storage.updateUser(userId, input);
       res.json(user);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -37,7 +58,18 @@ export async function registerRoutes(
 
   // Drops / Products Routes
   app.get(api.drops.list.path, async (req, res) => {
-    const country = (req.query.country as string) || (req.user?.country) || 'US';
+    // Get country from query param first, then try to fetch from DB based on user
+    let country = req.query.country as string;
+    
+    if (!country && req.isAuthenticated()) {
+      const userId = (req.user as any).claims?.sub;
+      if (userId) {
+        const dbUser = await storage.getUser(userId);
+        country = dbUser?.country || 'US';
+      }
+    }
+    
+    country = country || 'US';
     const products = await storage.getProductsByCountry(country);
     res.json(products);
   });
@@ -52,9 +84,10 @@ export async function registerRoutes(
   app.post(api.clicks.track.path, async (req, res) => {
     try {
       const input = api.clicks.track.input.parse(req.body);
+      const userId = req.isAuthenticated() ? (req.user as any).claims?.sub : undefined;
       await storage.trackClick({
         ...input,
-        userId: req.user?.id
+        userId
       });
       res.status(201).json({ success: true });
     } catch (err) {

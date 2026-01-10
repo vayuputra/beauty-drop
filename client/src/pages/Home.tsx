@@ -40,8 +40,12 @@ export default function Home() {
               Curated for {user.country === 'IN' ? '🇮🇳 India' : '🇺🇸 USA'}
             </p>
           </div>
-          <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold">
-            {user.username.charAt(0).toUpperCase()}
+          <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold overflow-hidden">
+            {user.profileImageUrl ? (
+              <img src={user.profileImageUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              (user.firstName?.charAt(0) || 'U').toUpperCase()
+            )}
           </div>
         </div>
       </header>

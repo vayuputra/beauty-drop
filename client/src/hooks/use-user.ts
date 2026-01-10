@@ -1,16 +1,41 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type UpdateUserRequest } from "@shared/routes";
-import { type User } from "@shared/schema";
+import { api } from "@shared/routes";
 
-// Get current user (wrapper around auth endpoint with specific type)
+// Type for merged user data (auth claims + DB preferences)
+export interface MergedUser {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  country: string | null;
+  preferences: {
+    interests: string[];
+    budget: string;
+    skinType?: string;
+    skinTone?: string;
+  } | null;
+}
+
+export type UpdateUserRequest = {
+  country?: string;
+  preferences?: {
+    interests: string[];
+    budget: string;
+    skinType?: string;
+    skinTone?: string;
+  };
+};
+
+// Get current user (merged auth + DB data)
 export function useUser() {
-  return useQuery({
+  return useQuery<MergedUser | null>({
     queryKey: [api.user.get.path],
     queryFn: async () => {
       const res = await fetch(api.user.get.path, { credentials: "include" });
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
-      return api.user.get.responses[200].parse(await res.json());
+      return res.json();
     },
     retry: false,
   });
@@ -21,11 +46,10 @@ export function useUpdateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (updates: UpdateUserRequest) => {
-      const validated = api.user.update.input.parse(updates);
       const res = await fetch(api.user.update.path, {
         method: api.user.update.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(updates),
         credentials: "include",
       });
       
@@ -35,10 +59,11 @@ export function useUpdateUser() {
         throw new Error("Failed to update profile");
       }
       
-      return api.user.update.responses[200].parse(await res.json());
+      return res.json();
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData([api.user.get.path], data);
+    onSuccess: () => {
+      // Refetch user to get merged data
+      queryClient.invalidateQueries({ queryKey: [api.user.get.path] });
     },
   });
 }

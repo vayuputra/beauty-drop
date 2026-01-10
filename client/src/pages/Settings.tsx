@@ -45,12 +45,16 @@ export default function Settings() {
           <h1 className="font-display text-3xl font-bold mb-6">Profile</h1>
           
           <div className="flex items-center gap-4">
-            <div className="h-20 w-20 rounded-full bg-accent text-white flex items-center justify-center text-3xl font-bold shadow-lg shadow-accent/20">
-              {user.username.charAt(0).toUpperCase()}
+            <div className="h-20 w-20 rounded-full bg-accent text-white flex items-center justify-center text-3xl font-bold shadow-lg shadow-accent/20 overflow-hidden">
+              {user.profileImageUrl ? (
+                <img src={user.profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                (user.firstName?.charAt(0) || user.email?.charAt(0) || 'U').toUpperCase()
+              )}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-foreground">@{user.username}</h2>
-              <p className="text-sm text-muted-foreground">Beauty Enthusiast</p>
+              <h2 className="text-xl font-bold text-foreground">{user.firstName} {user.lastName}</h2>
+              <p className="text-sm text-muted-foreground">{user.email}</p>
             </div>
           </div>
         </div>
