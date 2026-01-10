@@ -28,6 +28,8 @@ export const products = pgTable("products", {
     finish?: string;
     concern?: string;
   }>(),
+  influencerCount: integer("influencer_count").default(0),
+  lastInfluencerRefresh: timestamp("last_influencer_refresh"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

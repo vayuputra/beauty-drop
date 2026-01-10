@@ -4,7 +4,7 @@ import {
   type User, type InsertUser, type UpdateUserRequest,
   type Product, type ProductWithDetails, type InsertClick, type InfluencerMention
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, gt, desc, and, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User
@@ -13,9 +13,11 @@ export interface IStorage {
 
   // Products & Drops
   getProductsByCountry(country: string): Promise<Product[]>;
+  getTrendingProductsByCountry(country: string): Promise<Product[]>; // Only products with influencer mentions
   getProduct(id: number): Promise<ProductWithDetails | undefined>;
   getAllProducts(): Promise<Product[]>;
   updateProductImage(productId: number, imageUrl: string): Promise<void>;
+  updateProductInfluencerCount(productId: number, count: number): Promise<void>;
   
   // Influencers
   getInfluencersForProduct(productId: number): Promise<InfluencerMention[]>;
@@ -63,6 +65,21 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(products).where(eq(products.country, country));
   }
 
+  async getTrendingProductsByCountry(country: string): Promise<Product[]> {
+    // Only return products that have at least one influencer mention
+    // Sort by influencer count descending, then by most recently refreshed
+    return await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.country, country),
+          gt(products.influencerCount, 0)
+        )
+      )
+      .orderBy(desc(products.influencerCount), desc(products.lastInfluencerRefresh));
+  }
+
   async getProduct(id: number): Promise<ProductWithDetails | undefined> {
     const [product] = await db.select().from(products).where(eq(products.id, id));
     if (!product) return undefined;
@@ -92,6 +109,13 @@ export class DatabaseStorage implements IStorage {
 
   async updateProductImage(productId: number, imageUrl: string): Promise<void> {
     await db.update(products).set({ imageUrl }).where(eq(products.id, productId));
+  }
+
+  async updateProductInfluencerCount(productId: number, count: number): Promise<void> {
+    await db.update(products).set({ 
+      influencerCount: count,
+      lastInfluencerRefresh: new Date()
+    }).where(eq(products.id, productId));
   }
 
   async getInfluencersForProduct(productId: number): Promise<InfluencerMention[]> {

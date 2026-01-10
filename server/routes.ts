@@ -57,7 +57,7 @@ export async function registerRoutes(
     }
   });
 
-  // Drops / Products Routes
+  // Drops / Products Routes - Only return products with influencer mentions
   app.get(api.drops.list.path, async (req, res) => {
     // Get country from query param first, then try to fetch from DB based on user
     let country = req.query.country as string;
@@ -71,8 +71,9 @@ export async function registerRoutes(
     }
     
     country = country || 'US';
-    const products = await storage.getProductsByCountry(country);
-    res.json(products);
+    // Only return products that have influencer mentions (trending products)
+    const trendingProducts = await storage.getTrendingProductsByCountry(country);
+    res.json(trendingProducts);
   });
 
   app.get(api.products.get.path, async (req, res) => {
@@ -137,6 +138,9 @@ export async function registerRoutes(
           embedUrl: inf.embedUrl || null
         });
       }
+
+      // Update product's influencer count
+      await storage.updateProductInfluencerCount(productId, influencers.length);
 
       // Log success
       await db.insert(refreshLogs).values({
@@ -231,6 +235,9 @@ export async function registerRoutes(
           embedUrl: inf.embedUrl || null
         });
       }
+      
+      // Update product's influencer count
+      await storage.updateProductInfluencerCount(productId, influencers.length);
 
       // Update image if found
       let newImageUrl = product.imageUrl;
@@ -286,6 +293,9 @@ export async function registerRoutes(
               embedUrl: inf.embedUrl || null
             });
           }
+          
+          // Update product's influencer count
+          await storage.updateProductInfluencerCount(product.id, influencers.length);
 
           results.push({
             productId: product.id,
@@ -604,6 +614,7 @@ async function seedDatabase() {
 
     // Insert US Products with videos
     for (const prod of usProductData) {
+      const videoCount = prod.videos?.length || 0;
       const [newProduct] = await db.insert(products).values({
         name: prod.name,
         brand: prod.brand,
@@ -612,7 +623,9 @@ async function seedDatabase() {
         description: prod.description,
         imageUrl: prod.imageUrl,
         whyTrending: prod.whyTrending,
-        tags: prod.tags
+        tags: prod.tags,
+        influencerCount: videoCount,
+        lastInfluencerRefresh: videoCount > 0 ? new Date() : null
       }).returning();
 
       if (newProduct && sephora) {

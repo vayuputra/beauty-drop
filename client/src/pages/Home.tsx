@@ -116,8 +116,34 @@ export default function Home() {
             <ProductCard key={product.id} product={product} />
           ))
         ) : (
-          <div className="text-center py-20">
-            <p className="text-muted-foreground">No drops available yet.</p>
+          <div className="text-center py-16 px-4">
+            <div className="mb-6">
+              <Sparkles size={48} className="mx-auto text-muted-foreground/50 mb-4" />
+              <h2 className="text-lg font-semibold text-foreground mb-2">
+                No Trending Products Yet
+              </h2>
+              <p className="text-muted-foreground text-sm max-w-xs mx-auto">
+                We show products that influencers are actively talking about. Click the button below to discover what's trending right now!
+              </p>
+            </div>
+            <Button
+              onClick={handleRefreshTrending}
+              disabled={refreshTrending.isPending}
+              data-testid="button-discover-trending"
+              className="gap-2"
+            >
+              {refreshTrending.isPending ? (
+                <RefreshCw size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              {refreshTrending.isPending ? 'Discovering...' : 'Discover Trending Products'}
+            </Button>
+            {refreshTrending.isPending && (
+              <p className="text-xs text-muted-foreground mt-4">
+                Searching YouTube, Instagram, and TikTok for beauty influencers...
+              </p>
+            )}
           </div>
         )}
       </main>
