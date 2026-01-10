@@ -80,7 +80,7 @@ Only return the JSON array, no other text.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.1-sonar-small-128k-online",
+        model: "sonar",
         messages: [
           {
             role: "system",
@@ -172,7 +172,7 @@ Return only the JSON object, no other text.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.1-sonar-small-128k-online",
+        model: "sonar",
         messages: [
           {
             role: "system",

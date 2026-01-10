@@ -66,17 +66,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTrendingProductsByCountry(country: string): Promise<Product[]> {
-    // Only return products that have at least one influencer mention
-    // Sort by influencer count descending, then by most recently refreshed
+    // Return all products for the country, sorted by influencer count (trending first)
+    // Products with influencers appear first, then others
     return await db
       .select()
       .from(products)
-      .where(
-        and(
-          eq(products.country, country),
-          gt(products.influencerCount, 0)
-        )
-      )
+      .where(eq(products.country, country))
       .orderBy(desc(products.influencerCount), desc(products.lastInfluencerRefresh));
   }
 
