@@ -32,7 +32,7 @@ export default function ProductDetails() {
     <div className="min-h-screen bg-background pb-32">
       {/* Hero Image */}
       <div className="relative aspect-[4/5] w-full bg-secondary overflow-hidden">
-        <Link href="/" className="absolute top-12 left-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg text-foreground hover:scale-110 transition-transform">
+        <Link href="/" data-testid="button-back" className="absolute top-12 left-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg text-foreground hover:scale-110 transition-transform">
           <ArrowLeft size={20} />
         </Link>
         
@@ -60,7 +60,7 @@ export default function ProductDetails() {
             </span>
           </div>
           
-          <h1 className="font-display text-3xl font-bold text-foreground leading-tight mb-4">
+          <h1 data-testid="text-product-name" className="font-display text-3xl font-bold text-foreground leading-tight mb-4">
             {product.name}
           </h1>
           
@@ -171,6 +171,7 @@ export default function ProductDetails() {
               product.offers.map((offer: any) => (
                 <div 
                   key={offer.id} 
+                  data-testid={`card-offer-${offer.id}`}
                   className="bg-white p-4 rounded-xl border border-border shadow-sm flex items-center justify-between group hover:border-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -196,6 +197,7 @@ export default function ProductDetails() {
                     </span>
                     <button
                       onClick={() => handleOfferClick(offer)}
+                      data-testid={`button-buy-${offer.id}`}
                       className="bg-foreground text-background px-4 py-2 rounded-lg font-bold text-sm hover:bg-accent hover:text-white transition-colors flex items-center gap-2"
                     >
                       Buy <ExternalLink size={14} />
