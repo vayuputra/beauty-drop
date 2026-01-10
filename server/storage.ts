@@ -26,14 +26,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: UpdateUserRequest): Promise<User> {
-    const [user] = await db.update(users)
-      .set({
-        ...updates,
-        updatedAt: new Date()
-      })
-      .where(eq(users.id, id))
-      .returning();
-    return user;
+    // Check if user exists first
+    const existingUser = await this.getUser(id);
+    
+    if (existingUser) {
+      // Update existing user
+      const [user] = await db.update(users)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, id))
+        .returning();
+      return user;
+    } else {
+      // Insert new user (upsert behavior)
+      const [user] = await db.insert(users)
+        .values({
+          id,
+          ...updates
+        })
+        .returning();
+      return user;
+    }
   }
 
   async getProductsByCountry(country: string): Promise<Product[]> {
