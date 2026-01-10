@@ -27,17 +27,24 @@ export class DatabaseStorage implements IStorage {
 
   async updateUser(id: string, updates: UpdateUserRequest): Promise<User> {
     // Use Drizzle upsert with onConflictDoUpdate for proper handling
+    const prefs = updates.preferences as {
+      interests: string[];
+      budget: string;
+      skinType?: string;
+      skinTone?: string;
+    } | undefined;
+    
     const [user] = await db.insert(users)
       .values({
         id,
-        ...updates,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        country: updates.country,
+        preferences: prefs,
       })
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...updates,
+          country: updates.country,
+          preferences: prefs,
           updatedAt: new Date()
         }
       })
