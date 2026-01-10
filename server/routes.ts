@@ -318,6 +318,61 @@ export async function registerRoutes(
     }
   });
 
+  // Batch refresh all product images
+  app.post("/api/refresh-images", async (req, res) => {
+    try {
+      const allProducts = await storage.getAllProducts();
+      const results: { productId: number; name: string; status: string; imageUrl?: string }[] = [];
+
+      for (const product of allProducts) {
+        try {
+          // Skip if image doesn't look like a placeholder
+          if (product.imageUrl && !product.imageUrl.includes('unsplash.com')) {
+            results.push({
+              productId: product.id,
+              name: product.name,
+              status: 'Skipped (already has custom image)'
+            });
+            continue;
+          }
+
+          const imageInfo = await searchProductImage(product.name, product.brand);
+          
+          if (imageInfo && imageInfo.officialImageUrl) {
+            await storage.updateProductImage(product.id, imageInfo.officialImageUrl);
+            
+            results.push({
+              productId: product.id,
+              name: product.name,
+              status: `Updated from ${imageInfo.source}`,
+              imageUrl: imageInfo.officialImageUrl
+            });
+          } else {
+            results.push({
+              productId: product.id,
+              name: product.name,
+              status: 'No image found'
+            });
+          }
+
+          // Add a small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          results.push({
+            productId: product.id,
+            name: product.name,
+            status: 'Failed'
+          });
+        }
+      }
+
+      res.json({ success: true, results });
+    } catch (error) {
+      console.error("Error in batch image refresh:", error);
+      res.status(500).json({ error: "Failed to refresh images" });
+    }
+  });
+
   // Seed Data function
   await seedDatabase();
 

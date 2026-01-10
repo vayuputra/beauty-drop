@@ -95,3 +95,44 @@ export function useRefreshTrending() {
     },
   });
 }
+
+// Refresh image for a product
+export function useRefreshImage() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (productId: number) => {
+      const res = await fetch(`/api/products/${productId}/refresh-image`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to refresh image");
+      return await res.json();
+    },
+    onSuccess: (_, productId) => {
+      queryClient.invalidateQueries({ queryKey: [api.products.get.path, productId] });
+      queryClient.invalidateQueries({ queryKey: [api.drops.list.path] });
+    },
+  });
+}
+
+// Batch refresh all product images
+export function useRefreshAllImages() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/refresh-images", {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to refresh images");
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.drops.list.path] });
+    },
+  });
+}

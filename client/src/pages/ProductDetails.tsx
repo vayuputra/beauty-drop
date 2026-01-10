@@ -1,4 +1,4 @@
-import { useProduct, useTrackClick, useRefreshInfluencers } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
 import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles } from "lucide-react";
@@ -13,6 +13,7 @@ export default function ProductDetails() {
   const { data: product, isLoading, refetch } = useProduct(id);
   const trackClick = useTrackClick();
   const refreshInfluencers = useRefreshInfluencers();
+  const refreshImage = useRefreshImage();
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -27,6 +28,11 @@ export default function ProductDetails() {
 
   const handleRefreshInfluencers = async () => {
     await refreshInfluencers.mutateAsync(product.id);
+    refetch();
+  };
+
+  const handleRefreshImage = async () => {
+    await refreshImage.mutateAsync(product.id);
     refetch();
   };
 
@@ -74,6 +80,17 @@ export default function ProductDetails() {
         <Link href="/" data-testid="button-back" className="absolute top-12 left-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg text-foreground hover:scale-110 transition-transform">
           <ArrowLeft size={20} />
         </Link>
+        
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleRefreshImage}
+          disabled={refreshImage.isPending}
+          data-testid="button-refresh-image"
+          className="absolute top-12 right-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
+        >
+          <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
+        </Button>
         
         <img 
           src={imageUrl} 
