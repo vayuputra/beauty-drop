@@ -2,7 +2,7 @@ import { db } from "./db";
 import {
   users, products, retailers, productOffers, productVideos, clicks, influencerMentions,
   type User, type InsertUser, type UpdateUserRequest,
-  type Product, type ProductWithDetails, type InsertClick, type InfluencerMention
+  type Product, type ProductWithDetails, type ProductWithPriceRange, type InsertClick, type InfluencerMention
 } from "@shared/schema";
 import { eq, gt, desc, and, sql } from "drizzle-orm";
 
@@ -13,7 +13,7 @@ export interface IStorage {
 
   // Products & Drops
   getProductsByCountry(country: string): Promise<Product[]>;
-  getTrendingProductsByCountry(country: string): Promise<Product[]>; // Only products with influencer mentions
+  getTrendingProductsByCountry(country: string): Promise<ProductWithPriceRange[]>; // Only products with influencer mentions
   getProduct(id: number): Promise<ProductWithDetails | undefined>;
   getAllProducts(): Promise<Product[]>;
   updateProductImage(productId: number, imageUrl: string): Promise<void>;
@@ -65,14 +65,32 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(products).where(eq(products.country, country));
   }
 
-  async getTrendingProductsByCountry(country: string): Promise<Product[]> {
-    // Return all products for the country, sorted by influencer count (trending first)
-    // Products with influencers appear first, then others
-    return await db
+  async getTrendingProductsByCountry(country: string): Promise<ProductWithPriceRange[]> {
+    // Return all products for the country with price ranges, sorted by influencer count (trending first)
+    const productList = await db
       .select()
       .from(products)
       .where(eq(products.country, country))
       .orderBy(desc(products.influencerCount), desc(products.lastInfluencerRefresh));
+    
+    // Get price ranges for each product
+    const productsWithPrices = await Promise.all(
+      productList.map(async (product) => {
+        const offers = await db.select().from(productOffers).where(eq(productOffers.productId, product.id));
+        if (offers.length === 0) {
+          return { ...product, minPrice: null, maxPrice: null, currency: null };
+        }
+        const prices = offers.map(o => o.price);
+        return {
+          ...product,
+          minPrice: Math.min(...prices),
+          maxPrice: Math.max(...prices),
+          currency: offers[0].currency
+        };
+      })
+    );
+    
+    return productsWithPrices;
   }
 
   async getProduct(id: number): Promise<ProductWithDetails | undefined> {

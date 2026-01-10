@@ -152,4 +152,10 @@ export type ProductWithDetails = Product & {
   influencers: InfluencerMention[];
 };
 
+export type ProductWithPriceRange = Product & {
+  minPrice: number | null;
+  maxPrice: number | null;
+  currency: string | null;
+};
+
 export type UpdateUserRequest = Partial<InsertUser>;

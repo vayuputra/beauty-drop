@@ -5,10 +5,11 @@ import {
   products, 
   insertProductSchema,
   insertClickSchema,
-  type InsertClick
+  type InsertClick,
+  type ProductWithPriceRange
 } from './schema';
 
-export type { InsertClick };
+export type { InsertClick, ProductWithPriceRange };
 
 export const errorSchemas = {
   validation: z.object({
@@ -55,7 +56,7 @@ export const api = {
         country: z.string().optional(),
       }).optional(),
       responses: {
-        200: z.array(z.custom<typeof products.$inferSelect>()),
+        200: z.array(z.custom<ProductWithPriceRange>()),
       },
     },
   },

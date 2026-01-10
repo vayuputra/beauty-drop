@@ -565,16 +565,132 @@ async function seedDatabase() {
             creatorName: "Samantha Ravndahl",
             creatorHandle: "@ssssamanthaa",
             creatorFollowers: "2.3M"
+          }
+        ]
+      },
+      {
+        name: "Lip Butter Balm",
+        brand: "Summer Fridays",
+        category: "Makeup",
+        country: "US",
+        description: "Silky smooth lip balm with shea and murumuru seed butter for instant hydration.",
+        imageUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=600&h=600&fit=crop",
+        whyTrending: "TikTok's favorite lip product! Clean ingredients, maximum hydration.",
+        tags: { priceBand: "mid", finish: "glossy" },
+        price: 24.00,
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Summer Fridays Lip Butter - Honest Review",
+            videoUrl: "https://www.youtube.com/watch?v=lipbutter1",
+            embedUrl: "https://www.youtube.com/embed/lipbutter1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
+            creatorName: "Susan Yara",
+            creatorHandle: "@susanyara",
+            creatorFollowers: "1.8M"
           },
           {
-            platform: "tiktok",
-            title: "The scent that gets me compliments",
-            videoUrl: "https://www.tiktok.com/@soldejaneiro",
-            embedUrl: "https://www.tiktok.com/embed/v2/7600000000000000000",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
-            creatorName: "Tinx",
-            creatorHandle: "@itsmetinx",
+            platform: "youtube",
+            title: "Best Lip Products 2024",
+            videoUrl: "https://www.youtube.com/watch?v=lipbutter2",
+            embedUrl: "https://www.youtube.com/embed/lipbutter2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=300&h=400&fit=crop",
+            creatorName: "Kathleen Lights",
+            creatorHandle: "@kathleenlights",
+            creatorFollowers: "4.2M"
+          }
+        ]
+      },
+      {
+        name: "Snail Mucin 96% Power Essence",
+        brand: "COSRX",
+        category: "Skincare",
+        country: "US",
+        description: "Lightweight essence with 96% snail secretion filtrate for deep hydration and skin repair.",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&h=600&fit=crop",
+        whyTrending: "K-beauty cult favorite! 100M+ bottles sold worldwide.",
+        tags: { priceBand: "budget", finish: "hydrating" },
+        price: 25.00,
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "COSRX Snail Mucin - 1 Year Review",
+            videoUrl: "https://www.youtube.com/watch?v=snailmucin1",
+            embedUrl: "https://www.youtube.com/embed/snailmucin1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
+            creatorName: "Kelly Driscoll",
+            creatorHandle: "@kellydriscoll",
+            creatorFollowers: "520K"
+          },
+          {
+            platform: "youtube",
+            title: "How I Fixed My Skin with Snail Mucin",
+            videoUrl: "https://www.youtube.com/watch?v=snailmucin2",
+            embedUrl: "https://www.youtube.com/embed/snailmucin2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
+            creatorName: "James Welsh",
+            creatorHandle: "@jameswelsh",
+            creatorFollowers: "1.2M"
+          }
+        ]
+      },
+      {
+        name: "Cloud Paint",
+        brand: "Glossier",
+        category: "Makeup",
+        country: "US",
+        description: "Seamless, buildable gel-cream blush for a natural, flushed-from-within look.",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
+        whyTrending: "The internet's favorite blush! So easy to apply.",
+        tags: { priceBand: "mid", finish: "natural" },
+        price: 20.00,
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Glossier Cloud Paint - All Shades Reviewed",
+            videoUrl: "https://www.youtube.com/watch?v=cloudpaint1",
+            embedUrl: "https://www.youtube.com/embed/cloudpaint1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
+            creatorName: "Allana Davison",
+            creatorHandle: "@allanadavison",
             creatorFollowers: "1.5M"
+          }
+        ]
+      },
+      {
+        name: "Retinol 0.5 Treatment",
+        brand: "The Ordinary",
+        category: "Skincare",
+        country: "US",
+        description: "Pure retinol serum for reducing fine lines and improving skin texture.",
+        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600&h=600&fit=crop",
+        whyTrending: "Affordable retinol that actually works! Dermatologist approved.",
+        tags: { priceBand: "budget", finish: "anti-aging" },
+        price: 8.90,
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "The Ordinary Retinol Guide",
+            videoUrl: "https://www.youtube.com/watch?v=ordinary1",
+            embedUrl: "https://www.youtube.com/embed/ordinary1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=300&h=400&fit=crop",
+            creatorName: "Cassandra Bankson",
+            creatorHandle: "@cassandrabankson",
+            creatorFollowers: "2.1M"
+          },
+          {
+            platform: "youtube",
+            title: "How to Use The Ordinary Products",
+            videoUrl: "https://www.youtube.com/watch?v=ordinary2",
+            embedUrl: "https://www.youtube.com/embed/ordinary2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
+            creatorName: "Dr. Shereene Idriss",
+            creatorHandle: "@shereeneidriss",
+            creatorFollowers: "890K"
           }
         ]
       },
@@ -844,11 +960,127 @@ async function seedDatabase() {
           }
         ]
       },
+      {
+        name: "Compact Powder SPF 15",
+        brand: "Lakme",
+        category: "Makeup",
+        country: "IN",
+        description: "Silky smooth compact with built-in sunscreen for flawless matte finish.",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
+        whyTrending: "India's OG compact! Perfect for on-the-go touch ups.",
+        tags: { priceBand: "budget", finish: "matte" },
+        price: 295.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Lakme 9 to 5 Compact Review",
+            videoUrl: "https://www.youtube.com/watch?v=lakmecompact1",
+            embedUrl: "https://www.youtube.com/embed/lakmecompact1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=300&h=400&fit=crop",
+            creatorName: "Debasree Banerjee",
+            creatorHandle: "@debasreebanerjee",
+            creatorFollowers: "1.2M"
+          }
+        ]
+      },
+      {
+        name: "Salicylic Acid 2% Face Serum",
+        brand: "Minimalist",
+        category: "Skincare",
+        country: "IN",
+        description: "BHA serum for acne-prone skin, helps unclog pores and reduce breakouts.",
+        imageUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=600&h=600&fit=crop",
+        whyTrending: "Best affordable BHA serum in India! Dermat recommended.",
+        tags: { priceBand: "budget", finish: "clarifying" },
+        price: 549.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Minimalist Salicylic Acid - 30 Day Review",
+            videoUrl: "https://www.youtube.com/watch?v=salicylic1",
+            embedUrl: "https://www.youtube.com/embed/salicylic1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
+            creatorName: "Shreya Jain",
+            creatorHandle: "@shreyajain",
+            creatorFollowers: "2.1M"
+          },
+          {
+            platform: "youtube",
+            title: "Best Products for Acne in India",
+            videoUrl: "https://www.youtube.com/watch?v=salicylic2",
+            embedUrl: "https://www.youtube.com/embed/salicylic2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
+            creatorName: "Jovita George",
+            creatorHandle: "@jovitageorge",
+            creatorFollowers: "890K"
+          }
+        ]
+      },
+      {
+        name: "Liquid Lipstick Matte",
+        brand: "Sugar Cosmetics",
+        category: "Makeup",
+        country: "IN",
+        description: "Long-lasting matte liquid lipstick with intense pigmentation.",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
+        whyTrending: "Homegrown brand loved for bold Indian shades!",
+        tags: { priceBand: "mid", finish: "matte" },
+        price: 799.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Sugar Cosmetics Full Range Review",
+            videoUrl: "https://www.youtube.com/watch?v=sugar1",
+            embedUrl: "https://www.youtube.com/embed/sugar1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
+            creatorName: "Corallista",
+            creatorHandle: "@corallista",
+            creatorFollowers: "650K"
+          }
+        ]
+      },
+      {
+        name: "Green Tea Night Gel",
+        brand: "Plum",
+        category: "Skincare",
+        country: "IN",
+        description: "Oil-free night gel with green tea extracts for acne control and hydration.",
+        imageUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600&h=600&fit=crop",
+        whyTrending: "100% vegan and cruelty-free! Perfect for oily skin.",
+        tags: { priceBand: "mid", finish: "hydrating" },
+        price: 575.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Plum Green Tea Range - Complete Review",
+            videoUrl: "https://www.youtube.com/watch?v=plumgt1",
+            embedUrl: "https://www.youtube.com/embed/plumgt1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
+            creatorName: "Prakriti Singh",
+            creatorHandle: "@prakritsingh",
+            creatorFollowers: "450K"
+          },
+          {
+            platform: "youtube",
+            title: "Best Night Creams for Oily Skin India",
+            videoUrl: "https://www.youtube.com/watch?v=plumgt2",
+            embedUrl: "https://www.youtube.com/embed/plumgt2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
+            creatorName: "Shweta Vijay",
+            creatorHandle: "@shwetavijay",
+            creatorFollowers: "780K"
+          }
+        ]
+      },
     ];
 
     // Insert US Products with videos
     for (const prod of usProductData) {
-      const videoCount = prod.videos?.length || 0;
+      const youtubeVideoCount = prod.videos?.filter(v => v.platform === 'youtube').length || 0;
       const [newProduct] = await db.insert(products).values({
         name: prod.name,
         brand: prod.brand,
@@ -858,8 +1090,8 @@ async function seedDatabase() {
         imageUrl: prod.imageUrl,
         whyTrending: prod.whyTrending,
         tags: prod.tags,
-        influencerCount: videoCount,
-        lastInfluencerRefresh: videoCount > 0 ? new Date() : null
+        influencerCount: youtubeVideoCount,
+        lastInfluencerRefresh: youtubeVideoCount > 0 ? new Date() : null
       }).returning();
 
       const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
@@ -891,21 +1123,15 @@ async function seedDatabase() {
         });
       }
       
-      // Insert videos with influencer info (US only)
+      // Insert videos with influencer info (YouTube only)
       if (newProduct && prod.videos) {
-        for (const video of prod.videos) {
+        const youtubeVideos = prod.videos.filter(v => v.platform === 'youtube');
+        for (const video of youtubeVideos) {
           const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
-          let realVideoUrl = video.videoUrl;
-          if (video.platform === 'youtube') {
-            realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
-          } else if (video.platform === 'instagram') {
-            realVideoUrl = `https://www.instagram.com/${video.creatorHandle?.replace('@', '') || 'explore'}`;
-          } else if (video.platform === 'tiktok') {
-            realVideoUrl = `https://www.tiktok.com/search?q=${videoSearchQuery}`;
-          }
+          const realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
           await db.insert(productVideos).values({
             productId: newProduct.id,
-            platform: video.platform,
+            platform: 'youtube',
             title: video.title,
             videoUrl: realVideoUrl,
             embedUrl: video.embedUrl,
@@ -920,7 +1146,7 @@ async function seedDatabase() {
 
     // Insert India Products with videos
     for (const prod of inProductData) {
-      const videoCount = prod.videos?.length || 0;
+      const youtubeVideoCount = prod.videos?.filter(v => v.platform === 'youtube').length || 0;
       const [newProduct] = await db.insert(products).values({
         name: prod.name,
         brand: prod.brand,
@@ -930,8 +1156,8 @@ async function seedDatabase() {
         imageUrl: prod.imageUrl,
         whyTrending: prod.whyTrending,
         tags: prod.tags,
-        influencerCount: videoCount,
-        lastInfluencerRefresh: videoCount > 0 ? new Date() : null
+        influencerCount: youtubeVideoCount,
+        lastInfluencerRefresh: youtubeVideoCount > 0 ? new Date() : null
       }).returning();
 
       const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
@@ -990,19 +1216,15 @@ async function seedDatabase() {
         });
       }
       
-      // Insert videos with influencer info
+      // Insert videos with influencer info (YouTube only)
       if (newProduct && prod.videos) {
-        for (const video of prod.videos) {
+        const youtubeVideos = prod.videos.filter(v => v.platform === 'youtube');
+        for (const video of youtubeVideos) {
           const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
-          let realVideoUrl = video.videoUrl;
-          if (video.platform === 'youtube') {
-            realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
-          } else if (video.platform === 'instagram') {
-            realVideoUrl = `https://www.instagram.com/${video.creatorHandle?.replace('@', '') || 'explore'}`;
-          }
+          const realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
           await db.insert(productVideos).values({
             productId: newProduct.id,
-            platform: video.platform,
+            platform: 'youtube',
             title: video.title,
             videoUrl: realVideoUrl,
             embedUrl: video.embedUrl,

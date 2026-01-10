@@ -1,14 +1,20 @@
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
-import { type Product } from "@shared/schema";
+import { type ProductWithPriceRange } from "@shared/schema";
 import { motion } from "framer-motion";
 
 interface ProductCardProps {
-  product: Product;
+  product: ProductWithPriceRange;
+}
+
+function formatPrice(price: number, currency: string): string {
+  if (currency === 'INR') {
+    return `₹${price.toLocaleString('en-IN')}`;
+  }
+  return `$${price.toFixed(2)}`;
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  // Use placeholder if no image provided
   const imageUrl = product.imageUrl || "https://placehold.co/600x600/fce7f3/db2777?text=Beauty+Drop";
 
   return (
@@ -45,13 +51,20 @@ export function ProductCard({ product }: ProductCardProps) {
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-widest mb-1">
             {product.brand}
           </h3>
-          <h2 className="font-display text-xl font-semibold text-foreground leading-tight mb-3 line-clamp-2">
+          <h2 className="font-display text-xl font-semibold text-foreground leading-tight mb-2 line-clamp-2">
             {product.name}
           </h2>
           
-          <div className="flex items-center justify-between mt-4">
+          {/* Price Display */}
+          {product.minPrice && product.currency && (
+            <p className="text-sm font-semibold text-accent mb-3">
+              Starting at {formatPrice(product.minPrice, product.currency)}
+            </p>
+          )}
+          
+          <div className="flex items-center justify-between mt-4 gap-2">
             <span className="text-xs font-medium px-2 py-1 bg-secondary rounded-md text-secondary-foreground">
-              {product.country === 'IN' ? '🇮🇳 India' : '🇺🇸 USA'}
+              {product.country === 'IN' ? 'India' : 'USA'}
             </span>
             
             <div className="h-8 w-8 rounded-full bg-accent text-white flex items-center justify-center group-hover:bg-foreground transition-colors">
