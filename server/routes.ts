@@ -862,13 +862,14 @@ async function seedDatabase() {
         lastInfluencerRefresh: videoCount > 0 ? new Date() : null
       }).returning();
 
+      const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
       if (newProduct && sephora) {
         await db.insert(productOffers).values({
           productId: newProduct.id,
           retailerId: sephora.id,
           price: prod.price,
           currency: prod.currency,
-          affiliateUrl: `https://www.sephora.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.sephora.com/search?keyword=${searchQuery}`
         });
       }
       if (newProduct && ulta && prod.brand !== "Rare Beauty") {
@@ -877,7 +878,7 @@ async function seedDatabase() {
           retailerId: ulta.id,
           price: prod.price * 0.95,
           currency: prod.currency,
-          affiliateUrl: `https://www.ulta.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.ulta.com/search?query=${searchQuery}`
         });
       }
       if (newProduct && amazonUs) {
@@ -886,18 +887,27 @@ async function seedDatabase() {
           retailerId: amazonUs.id,
           price: prod.price * 0.92,
           currency: prod.currency,
-          affiliateUrl: `https://www.amazon.com/dp/${prod.name.toLowerCase().replace(/\s+/g, '-')}?tag=beautydrop-20`
+          affiliateUrl: `https://www.amazon.com/s?k=${searchQuery}`
         });
       }
       
       // Insert videos with influencer info (US only)
       if (newProduct && prod.videos) {
         for (const video of prod.videos) {
+          const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
+          let realVideoUrl = video.videoUrl;
+          if (video.platform === 'youtube') {
+            realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
+          } else if (video.platform === 'instagram') {
+            realVideoUrl = `https://www.instagram.com/${video.creatorHandle?.replace('@', '') || 'explore'}`;
+          } else if (video.platform === 'tiktok') {
+            realVideoUrl = `https://www.tiktok.com/search?q=${videoSearchQuery}`;
+          }
           await db.insert(productVideos).values({
             productId: newProduct.id,
             platform: video.platform,
             title: video.title,
-            videoUrl: video.videoUrl,
+            videoUrl: realVideoUrl,
             embedUrl: video.embedUrl,
             thumbnailUrl: video.thumbnailUrl,
             creatorName: video.creatorName,
@@ -924,13 +934,14 @@ async function seedDatabase() {
         lastInfluencerRefresh: videoCount > 0 ? new Date() : null
       }).returning();
 
+      const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
       if (newProduct && nykaa) {
         await db.insert(productOffers).values({
           productId: newProduct.id,
           retailerId: nykaa.id,
           price: prod.price,
           currency: prod.currency,
-          affiliateUrl: `https://www.nykaa.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.nykaa.com/search/result/?q=${searchQuery}`
         });
       }
       if (newProduct && purplle) {
@@ -939,7 +950,7 @@ async function seedDatabase() {
           retailerId: purplle.id,
           price: prod.price * 0.9,
           currency: prod.currency,
-          affiliateUrl: `https://www.purplle.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.purplle.com/search?q=${searchQuery}`
         });
       }
       if (newProduct && amazonIn) {
@@ -948,7 +959,7 @@ async function seedDatabase() {
           retailerId: amazonIn.id,
           price: prod.price * 0.95,
           currency: prod.currency,
-          affiliateUrl: `https://www.amazon.in/dp/${prod.name.toLowerCase().replace(/\s+/g, '-')}?tag=beautydrop-21`
+          affiliateUrl: `https://www.amazon.in/s?k=${searchQuery}`
         });
       }
       if (newProduct && myntra) {
@@ -957,7 +968,7 @@ async function seedDatabase() {
           retailerId: myntra.id,
           price: prod.price * 0.88,
           currency: prod.currency,
-          affiliateUrl: `https://www.myntra.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.myntra.com/${searchQuery.toLowerCase().replace(/%20/g, '-')}`
         });
       }
       if (newProduct && tataCliq) {
@@ -966,7 +977,7 @@ async function seedDatabase() {
           retailerId: tataCliq.id,
           price: prod.price * 0.93,
           currency: prod.currency,
-          affiliateUrl: `https://www.tatacliq.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.tatacliq.com/search/?searchCategory=all&text=${searchQuery}`
         });
       }
       if (newProduct && sephoraIn && prod.brand !== "Lakme" && prod.brand !== "Maybelline") {
@@ -975,18 +986,25 @@ async function seedDatabase() {
           retailerId: sephoraIn.id,
           price: prod.price * 1.05,
           currency: prod.currency,
-          affiliateUrl: `https://www.sephora.in/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
+          affiliateUrl: `https://www.sephora.in/search?q=${searchQuery}`
         });
       }
       
       // Insert videos with influencer info
       if (newProduct && prod.videos) {
         for (const video of prod.videos) {
+          const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
+          let realVideoUrl = video.videoUrl;
+          if (video.platform === 'youtube') {
+            realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
+          } else if (video.platform === 'instagram') {
+            realVideoUrl = `https://www.instagram.com/${video.creatorHandle?.replace('@', '') || 'explore'}`;
+          }
           await db.insert(productVideos).values({
             productId: newProduct.id,
             platform: video.platform,
             title: video.title,
-            videoUrl: video.videoUrl,
+            videoUrl: realVideoUrl,
             embedUrl: video.embedUrl,
             thumbnailUrl: video.thumbnailUrl,
             creatorName: video.creatorName,
