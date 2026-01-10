@@ -20,10 +20,18 @@ function getPlaceholderUrl(brand: string, name: string): string {
   return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
 }
 
+function getProxiedImageUrl(url: string): string {
+  if (!url) return '';
+  if (url.includes('placehold.co')) return url;
+  if (url.includes('unsplash.com')) return url;
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 export function ProductCard({ product }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const fallbackUrl = getPlaceholderUrl(product.brand, product.name);
-  const imageUrl = imgError ? fallbackUrl : (product.imageUrl || fallbackUrl);
+  const rawUrl = product.imageUrl || fallbackUrl;
+  const imageUrl = imgError ? fallbackUrl : getProxiedImageUrl(rawUrl);
 
   return (
     <Link href={`/product/${product.id}`} className="block group">

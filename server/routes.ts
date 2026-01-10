@@ -373,6 +373,68 @@ export async function registerRoutes(
     }
   });
 
+  // Image Proxy - bypasses hot-linking restrictions by fetching images server-side
+  app.get('/api/image-proxy', async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      
+      if (!imageUrl) {
+        return res.status(400).json({ error: 'Missing url parameter' });
+      }
+
+      // Validate URL is an image URL from allowed domains
+      const allowedDomains = [
+        'images-static.nykaa.com',
+        'cdn.shopify.com',
+        'www.sephora.com',
+        'www.sephora.me',
+        'images.ulta.com',
+        'theordinary.com',
+        'soldejaneiro.com',
+        'www.glowrecipe.com',
+        'plumgoodness.com',
+        'images.unsplash.com'
+      ];
+
+      let urlObj: URL;
+      try {
+        urlObj = new URL(imageUrl);
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL' });
+      }
+
+      const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Domain not allowed' });
+      }
+
+      // Fetch the image without referrer header
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+        }
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch image' });
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      const buffer = await response.arrayBuffer();
+
+      // Set caching headers (cache for 1 day)
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Content-Type', contentType);
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Image proxy error:', error);
+      res.status(500).json({ error: 'Failed to proxy image' });
+    }
+  });
+
   // Seed Data function
   await seedDatabase();
 
