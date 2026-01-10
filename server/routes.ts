@@ -548,7 +548,7 @@ async function seedDatabase() {
       },
     ];
 
-    // India Products (no videos - US only feature)
+    // India Products with video data
     const inProductData = [
       {
         name: "Matte Drama Long Stay Lipstick",
@@ -560,7 +560,29 @@ async function seedDatabase() {
         whyTrending: "Katrina Kaif's brand, highly rated for Indian skin tones.",
         tags: { priceBand: "budget", finish: "matte" },
         price: 999.00,
-        currency: "INR"
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Kay Beauty Lipstick Review - All Shades Swatches",
+            videoUrl: "https://www.youtube.com/watch?v=kaybeauty1",
+            embedUrl: "https://www.youtube.com/embed/kaybeauty1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
+            creatorName: "Shreya Jain",
+            creatorHandle: "@shreyajain",
+            creatorFollowers: "2.1M"
+          },
+          {
+            platform: "instagram",
+            title: "My go-to lipstick for Indian weddings",
+            videoUrl: "https://www.instagram.com/kaybykatrina",
+            embedUrl: "https://www.instagram.com/reel/kaybeauty/embed",
+            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
+            creatorName: "Malvika Sitlani",
+            creatorHandle: "@malvikasitlani",
+            creatorFollowers: "1.8M"
+          }
+        ]
       },
       {
         name: "Kumkumadi Tailam Face Oil",
@@ -572,7 +594,39 @@ async function seedDatabase() {
         whyTrending: "Ancient Ayurvedic secret for bridal glow! Dermatologist approved.",
         tags: { priceBand: "high", finish: "radiant" },
         price: 2650.00,
-        currency: "INR"
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Kumkumadi Oil - Worth the Hype? Honest Review",
+            videoUrl: "https://www.youtube.com/watch?v=kumkumadi1",
+            embedUrl: "https://www.youtube.com/embed/kumkumadi1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
+            creatorName: "Jovita George",
+            creatorHandle: "@jovitageorge",
+            creatorFollowers: "890K"
+          },
+          {
+            platform: "youtube",
+            title: "Bridal Skincare Routine with Kumkumadi",
+            videoUrl: "https://www.youtube.com/watch?v=kumkumadi2",
+            embedUrl: "https://www.youtube.com/embed/kumkumadi2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
+            creatorName: "Corallista",
+            creatorHandle: "@corallista",
+            creatorFollowers: "650K"
+          },
+          {
+            platform: "instagram",
+            title: "Night routine for glowing skin",
+            videoUrl: "https://www.instagram.com/forestessentials",
+            embedUrl: "https://www.instagram.com/reel/forest/embed",
+            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
+            creatorName: "Debasree Banerjee",
+            creatorHandle: "@debasreebanerjee",
+            creatorFollowers: "1.2M"
+          }
+        ]
       },
       {
         name: "Hydra Boost Moisturizer",
@@ -584,7 +638,29 @@ async function seedDatabase() {
         whyTrending: "Indian skincare brand going global! Clean beauty at its best.",
         tags: { priceBand: "budget", finish: "hydrating" },
         price: 599.00,
-        currency: "INR"
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Minimalist Skincare Full Range Review",
+            videoUrl: "https://www.youtube.com/watch?v=minimalist1",
+            embedUrl: "https://www.youtube.com/embed/minimalist1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
+            creatorName: "Prakriti Singh",
+            creatorHandle: "@prakritsingh",
+            creatorFollowers: "450K"
+          },
+          {
+            platform: "tiktok",
+            title: "Best budget moisturizer in India",
+            videoUrl: "https://www.tiktok.com/@minimalist",
+            embedUrl: "https://www.tiktok.com/embed/v2/7700000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
+            creatorName: "Skin by Dr. V",
+            creatorHandle: "@skinbydrv",
+            creatorFollowers: "320K"
+          }
+        ]
       },
       {
         name: "Nude Nail Enamel Collection",
@@ -596,7 +672,19 @@ async function seedDatabase() {
         whyTrending: "Office-approved nudes that work for every occasion.",
         tags: { priceBand: "budget", finish: "glossy" },
         price: 250.00,
-        currency: "INR"
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Lakme Nail Colors - All Shades Swatches",
+            videoUrl: "https://www.youtube.com/watch?v=lakme1",
+            embedUrl: "https://www.youtube.com/embed/lakme1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=300&h=400&fit=crop",
+            creatorName: "Nidhi Katiyar",
+            creatorHandle: "@nidhikatiyar",
+            creatorFollowers: "1.5M"
+          }
+        ]
       },
       {
         name: "Rice Water Brightening Serum",
@@ -608,7 +696,121 @@ async function seedDatabase() {
         whyTrending: "K-beauty meets Ayurveda! Vegan and cruelty-free.",
         tags: { priceBand: "mid", finish: "brightening" },
         price: 699.00,
-        currency: "INR"
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Plum Rice Water Serum - 30 Day Results",
+            videoUrl: "https://www.youtube.com/watch?v=plum1",
+            embedUrl: "https://www.youtube.com/embed/plum1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=300&h=400&fit=crop",
+            creatorName: "Shweta Vijay",
+            creatorHandle: "@shwetavijay",
+            creatorFollowers: "780K"
+          },
+          {
+            platform: "instagram",
+            title: "My brightening routine with Plum",
+            videoUrl: "https://www.instagram.com/plumgoodness",
+            embedUrl: "https://www.instagram.com/reel/plum/embed",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
+            creatorName: "Ankita Chaturvedi",
+            creatorHandle: "@corallista",
+            creatorFollowers: "650K"
+          }
+        ]
+      },
+      {
+        name: "Vitamin C 10% Face Serum",
+        brand: "Minimalist",
+        category: "Skincare",
+        country: "IN",
+        description: "Ethyl ascorbic acid with ferulic acid for bright, even-toned skin.",
+        imageUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=600&h=600&fit=crop",
+        whyTrending: "Affordable vitamin C that actually works! Pharmacy-grade ingredients.",
+        tags: { priceBand: "budget", finish: "brightening" },
+        price: 545.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Best Vitamin C Serums in India - Comparison",
+            videoUrl: "https://www.youtube.com/watch?v=vitc1",
+            embedUrl: "https://www.youtube.com/embed/vitc1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=300&h=400&fit=crop",
+            creatorName: "Shreya Jain",
+            creatorHandle: "@shreyajain",
+            creatorFollowers: "2.1M"
+          },
+          {
+            platform: "youtube",
+            title: "Minimalist Vitamin C - 60 Day Update",
+            videoUrl: "https://www.youtube.com/watch?v=vitc2",
+            embedUrl: "https://www.youtube.com/embed/vitc2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
+            creatorName: "Prakriti Singh",
+            creatorHandle: "@prakritsingh",
+            creatorFollowers: "450K"
+          }
+        ]
+      },
+      {
+        name: "Colossal Kajal 24Hr",
+        brand: "Maybelline",
+        category: "Makeup",
+        country: "IN",
+        description: "Smudge-proof, waterproof kajal for intense black definition that lasts all day.",
+        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600&h=600&fit=crop",
+        whyTrending: "India's favorite kajal! Perfect for humid weather.",
+        tags: { priceBand: "budget", finish: "matte" },
+        price: 325.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Best Kajals for Indian Eyes - Top 10",
+            videoUrl: "https://www.youtube.com/watch?v=kajal1",
+            embedUrl: "https://www.youtube.com/embed/kajal1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=300&h=400&fit=crop",
+            creatorName: "Malvika Sitlani",
+            creatorHandle: "@malvikasitlani",
+            creatorFollowers: "1.8M"
+          },
+          {
+            platform: "tiktok",
+            title: "Smudge test in Mumbai humidity",
+            videoUrl: "https://www.tiktok.com/@maybellineindia",
+            embedUrl: "https://www.tiktok.com/embed/v2/7800000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1597225244660-1cd128c64284?w=300&h=400&fit=crop",
+            creatorName: "Nidhi Katiyar",
+            creatorHandle: "@nidhikatiyar",
+            creatorFollowers: "1.5M"
+          }
+        ]
+      },
+      {
+        name: "Sunscreen SPF 50 PA++++",
+        brand: "Dot & Key",
+        category: "Skincare",
+        country: "IN",
+        description: "Lightweight, non-greasy sunscreen with vitamin C for daily protection.",
+        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&h=600&fit=crop",
+        whyTrending: "Finally a sunscreen that doesn't leave white cast on Indian skin!",
+        tags: { priceBand: "mid", finish: "matte" },
+        price: 695.00,
+        currency: "INR",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Best Sunscreens for Indian Skin - No White Cast",
+            videoUrl: "https://www.youtube.com/watch?v=sunscreen1",
+            embedUrl: "https://www.youtube.com/embed/sunscreen1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
+            creatorName: "Jovita George",
+            creatorHandle: "@jovitageorge",
+            creatorFollowers: "890K"
+          }
+        ]
       },
     ];
 
@@ -665,8 +867,9 @@ async function seedDatabase() {
       }
     }
 
-    // Insert India Products
+    // Insert India Products with videos
     for (const prod of inProductData) {
+      const videoCount = prod.videos?.length || 0;
       const [newProduct] = await db.insert(products).values({
         name: prod.name,
         brand: prod.brand,
@@ -675,7 +878,9 @@ async function seedDatabase() {
         description: prod.description,
         imageUrl: prod.imageUrl,
         whyTrending: prod.whyTrending,
-        tags: prod.tags
+        tags: prod.tags,
+        influencerCount: videoCount,
+        lastInfluencerRefresh: videoCount > 0 ? new Date() : null
       }).returning();
 
       if (newProduct && nykaa) {
@@ -695,6 +900,23 @@ async function seedDatabase() {
           currency: prod.currency,
           affiliateUrl: `https://www.purplle.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
         });
+      }
+      
+      // Insert videos with influencer info
+      if (newProduct && prod.videos) {
+        for (const video of prod.videos) {
+          await db.insert(productVideos).values({
+            productId: newProduct.id,
+            platform: video.platform,
+            title: video.title,
+            videoUrl: video.videoUrl,
+            embedUrl: video.embedUrl,
+            thumbnailUrl: video.thumbnailUrl,
+            creatorName: video.creatorName,
+            creatorHandle: video.creatorHandle,
+            creatorFollowers: video.creatorFollowers
+          });
+        }
       }
     }
 
