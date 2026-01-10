@@ -1,7 +1,8 @@
 import { useProduct, useTrackClick } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, ShoppingBag, TrendingUp, Info } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users } from "lucide-react";
+import { SiYoutube, SiTiktok, SiInstagram } from "react-icons/si";
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 
@@ -86,36 +87,80 @@ export default function ProductDetails() {
           </motion.div>
         )}
 
-        {/* Video Section */}
+        {/* Video Section with Influencer Info */}
         {product.videos && product.videos.length > 0 && (
-          <div className="mb-10">
-            <h3 className="font-display text-xl font-bold mb-4">Watch Reviews</h3>
-            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-              {product.videos.map((video: any) => (
-                <a 
-                  key={video.id} 
-                  href={video.videoUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex-shrink-0 relative w-40 aspect-[9/16] rounded-xl overflow-hidden group shadow-md"
-                >
-                  <img 
-                    src={video.thumbnailUrl || "https://placehold.co/400x600/black/white?text=Video"} 
-                    alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
-                      <Play size={20} fill="white" />
-                    </div>
-                  </div>
-                  <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                    <p className="text-[10px] text-white font-medium line-clamp-2">{video.title}</p>
-                  </div>
-                </a>
-              ))}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-10"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Users size={18} className="text-accent" />
+              <h3 className="font-display text-xl font-bold">Creator Reviews</h3>
             </div>
-          </div>
+            <div className="space-y-4">
+              {product.videos.map((video: any) => {
+                const PlatformIcon = video.platform === 'youtube' ? SiYoutube 
+                  : video.platform === 'tiktok' ? SiTiktok 
+                  : SiInstagram;
+                const platformColor = video.platform === 'youtube' ? 'text-red-500'
+                  : video.platform === 'tiktok' ? 'text-foreground'
+                  : 'text-pink-500';
+                
+                return (
+                  <a 
+                    key={video.id} 
+                    href={video.videoUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex gap-4 bg-white p-3 rounded-xl border border-border shadow-sm hover:border-accent/50 transition-colors group"
+                    data-testid={`video-card-${video.id}`}
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative flex-shrink-0 w-24 aspect-[9/16] rounded-lg overflow-hidden">
+                      <img 
+                        src={video.thumbnailUrl || "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=200&h=300&fit=crop"} 
+                        alt={video.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center">
+                          <Play size={14} fill="white" className="text-white ml-0.5" />
+                        </div>
+                      </div>
+                      {/* Platform Badge */}
+                      <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
+                        <PlatformIcon size={12} />
+                      </div>
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 py-1">
+                      <p className="text-sm font-medium text-foreground line-clamp-2 mb-2">
+                        {video.title}
+                      </p>
+                      
+                      {/* Creator Info */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent">
+                          {video.creatorName?.charAt(0) || 'C'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">
+                            {video.creatorName || 'Creator'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {video.creatorHandle} • {video.creatorFollowers} followers
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </motion.div>
         )}
 
         {/* Offers / Price Comparison */}

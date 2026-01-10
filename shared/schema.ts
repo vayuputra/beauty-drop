@@ -48,6 +48,10 @@ export const productVideos = pgTable("product_videos", {
   title: text("title"),
   thumbnailUrl: text("thumbnail_url"),
   videoUrl: text("video_url").notNull(),
+  embedUrl: text("embed_url"), // Embeddable URL for iframe
+  creatorName: text("creator_name"), // Influencer name
+  creatorHandle: text("creator_handle"), // @handle
+  creatorFollowers: text("creator_followers"), // e.g. "2.5M"
 });
 
 export const clicks = pgTable("clicks", {

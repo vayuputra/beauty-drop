@@ -131,7 +131,7 @@ async function seedDatabase() {
       logoUrl: "https://cdn.purplle.com/static/img/logo.svg"
     }).returning();
 
-    // US Products
+    // US Products with working images and video data
     const usProductData = [
       {
         name: "Soft Pinch Liquid Blush",
@@ -139,11 +139,43 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "A weightless, long-lasting liquid blush that blends and builds beautifully for a soft, healthy flush.",
-        imageUrl: "https://www.sephora.com/productimages/sku/s2362085-main-zoom.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
         whyTrending: "Viral on TikTok for its high pigmentation and lasting power.",
         tags: { priceBand: "mid", finish: "dewy" },
         price: 23.00,
-        currency: "USD"
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Rare Beauty Blush Review - Worth the Hype?",
+            videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
+            creatorName: "Jackie Aina",
+            creatorHandle: "@jackieaina",
+            creatorFollowers: "3.5M"
+          },
+          {
+            platform: "tiktok",
+            title: "One dot is all you need!",
+            videoUrl: "https://www.tiktok.com/@rarebeauty",
+            embedUrl: "https://www.tiktok.com/embed/v2/7200000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
+            creatorName: "Mikayla Nogueira",
+            creatorHandle: "@mikaylanogueira",
+            creatorFollowers: "15.2M"
+          },
+          {
+            platform: "instagram",
+            title: "My everyday blush routine",
+            videoUrl: "https://www.instagram.com/rarebeauty",
+            embedUrl: "https://www.instagram.com/reel/ABC123/embed",
+            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
+            creatorName: "Nikkie de Jager",
+            creatorHandle: "@nikkietutorials",
+            creatorFollowers: "16.8M"
+          }
+        ]
       },
       {
         name: "Black Honey Lip Balm",
@@ -151,23 +183,77 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Iconic sheer berry tint that adapts to your unique chemistry for a personalized flush.",
-        imageUrl: "https://www.sephora.com/productimages/sku/s2518447-main-zoom.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
         whyTrending: "90s nostalgia comeback! The OG universally flattering lip color.",
         tags: { priceBand: "mid", finish: "sheer" },
         price: 22.00,
-        currency: "USD"
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "The Original 90s Lip is BACK",
+            videoUrl: "https://www.youtube.com/watch?v=example1",
+            embedUrl: "https://www.youtube.com/embed/example1",
+            thumbnailUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=300&h=400&fit=crop",
+            creatorName: "Robert Welsh",
+            creatorHandle: "@robertwelsh",
+            creatorFollowers: "1.2M"
+          },
+          {
+            platform: "tiktok",
+            title: "POV: Your mom's favorite lip product",
+            videoUrl: "https://www.tiktok.com/@clinique",
+            embedUrl: "https://www.tiktok.com/embed/v2/7300000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
+            creatorName: "Alix Earle",
+            creatorHandle: "@alixearle",
+            creatorFollowers: "6.8M"
+          }
+        ]
       },
       {
-        name: "Glow Recipe Watermelon Dew Drops",
+        name: "Watermelon Glow Dew Drops",
         brand: "Glow Recipe",
         category: "Skincare",
         country: "US",
         description: "Hyaluronic acid serum with watermelon, vitamin E, and light-reflecting pigments for instant glow.",
-        imageUrl: "https://www.sephora.com/productimages/sku/s2210516-main-zoom.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=600&h=600&fit=crop",
         whyTrending: "Glass skin in a bottle! Celebrity makeup artists swear by it.",
         tags: { priceBand: "high", finish: "dewy" },
         price: 34.00,
-        currency: "USD"
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Glass Skin Tutorial with Glow Recipe",
+            videoUrl: "https://www.youtube.com/watch?v=example2",
+            embedUrl: "https://www.youtube.com/embed/example2",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
+            creatorName: "Hyram Yarbro",
+            creatorHandle: "@hyaboratory",
+            creatorFollowers: "4.5M"
+          },
+          {
+            platform: "instagram",
+            title: "My morning skincare routine",
+            videoUrl: "https://www.instagram.com/glowrecipe",
+            embedUrl: "https://www.instagram.com/reel/DEF456/embed",
+            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
+            creatorName: "James Welsh",
+            creatorHandle: "@james_s_welsh",
+            creatorFollowers: "892K"
+          },
+          {
+            platform: "tiktok",
+            title: "The dewiest skin ever",
+            videoUrl: "https://www.tiktok.com/@glowrecipe",
+            embedUrl: "https://www.tiktok.com/embed/v2/7400000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
+            creatorName: "Skincare by Cassandra",
+            creatorHandle: "@skincaresbycass",
+            creatorFollowers: "2.1M"
+          }
+        ]
       },
       {
         name: "Lash Sensational Sky High Mascara",
@@ -175,27 +261,71 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Lengthening and volumizing mascara with flex tower brush for limitless length.",
-        imageUrl: "https://www.ulta.com/p/lash-sensational-sky-high-mascara-pimprod2012934",
+        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600&h=600&fit=crop",
         whyTrending: "Drugstore mascara that rivals luxury! 10M+ TikTok views.",
         tags: { priceBand: "budget", finish: "dramatic" },
         price: 13.99,
-        currency: "USD"
+        currency: "USD",
+        videos: [
+          {
+            platform: "tiktok",
+            title: "This $14 mascara changed my life",
+            videoUrl: "https://www.tiktok.com/@maybelline",
+            embedUrl: "https://www.tiktok.com/embed/v2/7500000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1597225244660-1cd128c64284?w=300&h=400&fit=crop",
+            creatorName: "Meredith Duxbury",
+            creatorHandle: "@meredithduxbury",
+            creatorFollowers: "18.5M"
+          },
+          {
+            platform: "youtube",
+            title: "Best Drugstore Mascara 2024",
+            videoUrl: "https://www.youtube.com/watch?v=example3",
+            embedUrl: "https://www.youtube.com/embed/example3",
+            thumbnailUrl: "https://images.unsplash.com/photo-1583241800698-e8ab01d85f4e?w=300&h=400&fit=crop",
+            creatorName: "Taylor Wynn",
+            creatorHandle: "@taylorwynn",
+            creatorFollowers: "1.1M"
+          }
+        ]
       },
       {
-        name: "Sol de Janeiro Bum Bum Cream",
+        name: "Brazilian Bum Bum Cream",
         brand: "Sol de Janeiro",
         category: "Body",
         country: "US",
         description: "Fast-absorbing body cream with cupuacu butter and coconut oil for silky skin.",
-        imageUrl: "https://www.sephora.com/productimages/sku/s1930791-main-zoom.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600&h=600&fit=crop",
         whyTrending: "The iconic Brazilian scent everyone is obsessed with!",
         tags: { priceBand: "high", finish: "smooth" },
         price: 48.00,
-        currency: "USD"
+        currency: "USD",
+        videos: [
+          {
+            platform: "youtube",
+            title: "Why Everyone is Obsessed with This Scent",
+            videoUrl: "https://www.youtube.com/watch?v=example4",
+            embedUrl: "https://www.youtube.com/embed/example4",
+            thumbnailUrl: "https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=300&h=400&fit=crop",
+            creatorName: "Samantha Ravndahl",
+            creatorHandle: "@ssssamanthaa",
+            creatorFollowers: "2.3M"
+          },
+          {
+            platform: "tiktok",
+            title: "The scent that gets me compliments",
+            videoUrl: "https://www.tiktok.com/@soldejaneiro",
+            embedUrl: "https://www.tiktok.com/embed/v2/7600000000000000000",
+            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
+            creatorName: "Tinx",
+            creatorHandle: "@itsmetinx",
+            creatorFollowers: "1.5M"
+          }
+        ]
       },
     ];
 
-    // India Products
+    // India Products (no videos - US only feature)
     const inProductData = [
       {
         name: "Matte Drama Long Stay Lipstick",
@@ -203,7 +333,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "IN",
         description: "Long stay matte lipstick enriched with vitamin E for comfortable wear.",
-        imageUrl: "https://images-static.nykaa.com/media/catalog/product/tr:w-220,h-220,cm-pad_resize/0/4/04ac8f28904330902640_1.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
         whyTrending: "Katrina Kaif's brand, highly rated for Indian skin tones.",
         tags: { priceBand: "budget", finish: "matte" },
         price: 999.00,
@@ -215,7 +345,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Ayurvedic night serum with saffron and 16 precious herbs for radiant skin.",
-        imageUrl: "https://www.forestessentialsindia.com/media/catalog/product/k/u/kumkumadi-thailam-35ml_1.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600&h=600&fit=crop",
         whyTrending: "Ancient Ayurvedic secret for bridal glow! Dermatologist approved.",
         tags: { priceBand: "high", finish: "radiant" },
         price: 2650.00,
@@ -227,7 +357,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Lightweight gel moisturizer with 5% marula oil and squalane for deep hydration.",
-        imageUrl: "https://images-static.nykaa.com/media/catalog/product/tr:w-220,h-220,cm-pad_resize/d/4/d428b17MINIM00000028_1.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&h=600&fit=crop",
         whyTrending: "Indian skincare brand going global! Clean beauty at its best.",
         tags: { priceBand: "budget", finish: "hydrating" },
         price: 599.00,
@@ -239,7 +369,7 @@ async function seedDatabase() {
         category: "Nails",
         country: "IN",
         description: "Long-lasting, chip-resistant nail polish in universally flattering nude shades.",
-        imageUrl: "https://images-static.nykaa.com/media/catalog/product/tr:w-220,h-220,cm-pad_resize/l/a/lakme-9to5-primer-nail-colour-nude-peach-9ml_1.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600&h=600&fit=crop",
         whyTrending: "Office-approved nudes that work for every occasion.",
         tags: { priceBand: "budget", finish: "glossy" },
         price: 250.00,
@@ -251,7 +381,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Korean-inspired brightening serum with fermented rice water and niacinamide.",
-        imageUrl: "https://images-static.nykaa.com/media/catalog/product/tr:w-220,h-220,cm-pad_resize/p/l/plum-rice-water-bright-serum-30ml_1.jpg",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&h=600&fit=crop",
         whyTrending: "K-beauty meets Ayurveda! Vegan and cruelty-free.",
         tags: { priceBand: "mid", finish: "brightening" },
         price: 699.00,
@@ -259,7 +389,7 @@ async function seedDatabase() {
       },
     ];
 
-    // Insert US Products
+    // Insert US Products with videos
     for (const prod of usProductData) {
       const [newProduct] = await db.insert(products).values({
         name: prod.name,
@@ -289,6 +419,23 @@ async function seedDatabase() {
           currency: prod.currency,
           affiliateUrl: `https://www.ulta.com/product/${prod.name.toLowerCase().replace(/\s+/g, '-')}`
         });
+      }
+      
+      // Insert videos with influencer info (US only)
+      if (newProduct && prod.videos) {
+        for (const video of prod.videos) {
+          await db.insert(productVideos).values({
+            productId: newProduct.id,
+            platform: video.platform,
+            title: video.title,
+            videoUrl: video.videoUrl,
+            embedUrl: video.embedUrl,
+            thumbnailUrl: video.thumbnailUrl,
+            creatorName: video.creatorName,
+            creatorHandle: video.creatorHandle,
+            creatorFollowers: video.creatorFollowers
+          });
+        }
       }
     }
 
