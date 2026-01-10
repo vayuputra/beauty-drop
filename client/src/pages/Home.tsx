@@ -1,11 +1,14 @@
 import { useUser } from "@/hooks/use-user";
-import { useDrops } from "@/hooks/use-drops";
+import { useDrops, useRefreshTrending } from "@/hooks/use-drops";
 import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { clsx } from "clsx";
+import { RefreshCw, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const FILTERS = ["All", "Trending", "New", "Skincare", "Makeup"];
 
@@ -13,6 +16,8 @@ export default function Home() {
   const { data: user, isLoading: userLoading } = useUser();
   const [, setLocation] = useLocation();
   const [activeFilter, setActiveFilter] = useState("All");
+  const refreshTrending = useRefreshTrending();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -23,7 +28,24 @@ export default function Home() {
   }, [user, userLoading, setLocation]);
 
   // Fetch drops based on user country preference
-  const { data: products, isLoading: productsLoading } = useDrops(user?.country || undefined);
+  const { data: products, isLoading: productsLoading, refetch } = useDrops(user?.country || undefined);
+
+  const handleRefreshTrending = async () => {
+    try {
+      const result = await refreshTrending.mutateAsync();
+      await refetch();
+      toast({
+        title: "Trending data refreshed",
+        description: `Updated influencer data for ${result.results?.length || 0} products`,
+      });
+    } catch (error) {
+      toast({
+        title: "Refresh failed",
+        description: "Could not refresh trending data. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (userLoading || !user || !user.country) return <div className="min-h-screen bg-background"><Loader /></div>;
 
@@ -40,12 +62,29 @@ export default function Home() {
               Curated for {user.country === 'IN' ? '🇮🇳 India' : '🇺🇸 USA'}
             </p>
           </div>
-          <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold overflow-hidden">
-            {user.profileImageUrl ? (
-              <img src={user.profileImageUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              (user.firstName?.charAt(0) || 'U').toUpperCase()
-            )}
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRefreshTrending}
+              disabled={refreshTrending.isPending}
+              data-testid="button-refresh-trending"
+              className="gap-2"
+            >
+              {refreshTrending.isPending ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              {refreshTrending.isPending ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold overflow-hidden">
+              {user.profileImageUrl ? (
+                <img src={user.profileImageUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                (user.firstName?.charAt(0) || 'U').toUpperCase()
+              )}
+            </div>
           </div>
         </div>
       </header>

@@ -1,8 +1,8 @@
 import { db } from "./db";
 import {
-  users, products, retailers, productOffers, productVideos, clicks,
+  users, products, retailers, productOffers, productVideos, clicks, influencerMentions,
   type User, type InsertUser, type UpdateUserRequest,
-  type Product, type ProductWithDetails, type InsertClick
+  type Product, type ProductWithDetails, type InsertClick, type InfluencerMention
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -14,6 +14,13 @@ export interface IStorage {
   // Products & Drops
   getProductsByCountry(country: string): Promise<Product[]>;
   getProduct(id: number): Promise<ProductWithDetails | undefined>;
+  getAllProducts(): Promise<Product[]>;
+  updateProductImage(productId: number, imageUrl: string): Promise<void>;
+  
+  // Influencers
+  getInfluencersForProduct(productId: number): Promise<InfluencerMention[]>;
+  addInfluencerMention(productId: number, influencer: Omit<InfluencerMention, 'id' | 'productId' | 'discoveredAt'>): Promise<void>;
+  clearInfluencersForProduct(productId: number): Promise<void>;
   
   // Analytics
   trackClick(click: InsertClick): Promise<void>;
@@ -68,12 +75,45 @@ export class DatabaseStorage implements IStorage {
     });
 
     const videos = await db.select().from(productVideos).where(eq(productVideos.productId, id));
+    
+    const influencers = await db.select().from(influencerMentions).where(eq(influencerMentions.productId, id));
 
     return {
       ...product,
       offers,
-      videos
+      videos,
+      influencers
     };
+  }
+
+  async getAllProducts(): Promise<Product[]> {
+    return await db.select().from(products);
+  }
+
+  async updateProductImage(productId: number, imageUrl: string): Promise<void> {
+    await db.update(products).set({ imageUrl }).where(eq(products.id, productId));
+  }
+
+  async getInfluencersForProduct(productId: number): Promise<InfluencerMention[]> {
+    return await db.select().from(influencerMentions).where(eq(influencerMentions.productId, productId));
+  }
+
+  async addInfluencerMention(productId: number, influencer: Omit<InfluencerMention, 'id' | 'productId' | 'discoveredAt'>): Promise<void> {
+    await db.insert(influencerMentions).values({
+      productId,
+      name: influencer.name,
+      handle: influencer.handle,
+      platform: influencer.platform,
+      followers: influencer.followers,
+      videoUrl: influencer.videoUrl,
+      videoTitle: influencer.videoTitle,
+      thumbnailUrl: influencer.thumbnailUrl,
+      embedUrl: influencer.embedUrl
+    });
+  }
+
+  async clearInfluencersForProduct(productId: number): Promise<void> {
+    await db.delete(influencerMentions).where(eq(influencerMentions.productId, productId));
   }
 
   async trackClick(click: InsertClick): Promise<void> {

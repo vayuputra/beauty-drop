@@ -62,10 +62,41 @@ export const clicks = pgTable("clicks", {
   clickedAt: timestamp("clicked_at").defaultNow(),
 });
 
+export const influencerMentions = pgTable("influencer_mentions", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  name: text("name").notNull(),
+  handle: text("handle").notNull(),
+  platform: text("platform").notNull(), // 'youtube', 'instagram', 'tiktok', 'reddit'
+  followers: text("followers"),
+  videoUrl: text("video_url"),
+  videoTitle: text("video_title"),
+  thumbnailUrl: text("thumbnail_url"),
+  embedUrl: text("embed_url"),
+  discoveredAt: timestamp("discovered_at").defaultNow(),
+});
+
+export const refreshLogs = pgTable("refresh_logs", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id),
+  refreshType: text("refresh_type").notNull(), // 'influencers', 'image', 'all'
+  status: text("status").notNull(), // 'success', 'failed', 'pending'
+  message: text("message"),
+  refreshedAt: timestamp("refreshed_at").defaultNow(),
+});
+
 // Relations
 export const productRelations = relations(products, ({ one, many }) => ({
   offers: many(productOffers),
   videos: many(productVideos),
+  influencers: many(influencerMentions),
+}));
+
+export const influencerMentionRelations = relations(influencerMentions, ({ one }) => ({
+  product: one(products, {
+    fields: [influencerMentions.productId],
+    references: [products.id],
+  }),
 }));
 
 export const offerRelations = relations(productOffers, ({ one }) => ({
@@ -104,6 +135,7 @@ export type Product = typeof products.$inferSelect;
 export type Retailer = typeof retailers.$inferSelect;
 export type ProductOffer = typeof productOffers.$inferSelect;
 export type ProductVideo = typeof productVideos.$inferSelect;
+export type InfluencerMention = typeof influencerMentions.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -115,6 +147,7 @@ export type InsertClick = z.infer<typeof insertClickSchema>;
 export type ProductWithDetails = Product & {
   offers: (ProductOffer & { retailer: Retailer })[];
   videos: ProductVideo[];
+  influencers: InfluencerMention[];
 };
 
 export type UpdateUserRequest = Partial<InsertUser>;

@@ -55,3 +55,43 @@ export function useTrackClick() {
     },
   });
 }
+
+// Refresh influencers for a product
+export function useRefreshInfluencers() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (productId: number) => {
+      const res = await fetch(`/api/products/${productId}/refresh-influencers`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to refresh influencers");
+      return await res.json();
+    },
+    onSuccess: (_, productId) => {
+      queryClient.invalidateQueries({ queryKey: [api.products.get.path, productId] });
+    },
+  });
+}
+
+// Refresh all trending data (batch operation)
+export function useRefreshTrending() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/refresh-trending", {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to refresh trending data");
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.drops.list.path] });
+    },
+  });
+}

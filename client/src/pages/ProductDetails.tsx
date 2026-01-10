@@ -1,17 +1,20 @@
-import { useProduct, useTrackClick } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users } from "lucide-react";
-import { SiYoutube, SiTiktok, SiInstagram } from "react-icons/si";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles } from "lucide-react";
+import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
-import { clsx } from "clsx";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
   const id = params ? parseInt(params.id) : 0;
   
-  const { data: product, isLoading } = useProduct(id);
+  const { data: product, isLoading, refetch } = useProduct(id);
   const trackClick = useTrackClick();
+  const refreshInfluencers = useRefreshInfluencers();
+  const [showVideoEmbed, setShowVideoEmbed] = useState<number | null>(null);
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -20,13 +23,68 @@ export default function ProductDetails() {
     trackClick.mutate({
       productId: product.id,
       retailerId: offer.retailer.id,
-      // In a real app we'd need userId here too if schema requires it, 
-      // but schema says references() not notNull() so might be optional or inferred by session in backend
     });
     window.open(offer.affiliateUrl, '_blank');
   };
 
+  const handleRefreshInfluencers = async () => {
+    await refreshInfluencers.mutateAsync(product.id);
+    refetch();
+  };
+
   const imageUrl = product.imageUrl || "https://placehold.co/600x600/fce7f3/db2777?text=Beauty+Drop";
+
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'youtube': return SiYoutube;
+      case 'tiktok': return SiTiktok;
+      case 'instagram': return SiInstagram;
+      case 'reddit': return SiReddit;
+      default: return SiYoutube;
+    }
+  };
+
+  const getPlatformColor = (platform: string) => {
+    switch (platform) {
+      case 'youtube': return 'text-red-500';
+      case 'tiktok': return 'text-foreground';
+      case 'instagram': return 'text-pink-500';
+      case 'reddit': return 'text-orange-500';
+      default: return 'text-foreground';
+    }
+  };
+
+  const isYouTubeUrl = (url: string) => {
+    return url?.includes('youtube.com') || url?.includes('youtu.be');
+  };
+
+  const getYouTubeEmbedUrl = (url: string) => {
+    if (!url) return null;
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return `https://www.youtube.com/embed/${match[1]}`;
+    }
+    return null;
+  };
+
+  const allInfluencers = [
+    ...(product.influencers || []),
+    ...(product.videos || []).map((v: any) => ({
+      id: `video-${v.id}`,
+      name: v.creatorName,
+      handle: v.creatorHandle,
+      platform: v.platform,
+      followers: v.creatorFollowers,
+      videoUrl: v.videoUrl,
+      videoTitle: v.title,
+      thumbnailUrl: v.thumbnailUrl,
+      embedUrl: v.embedUrl
+    }))
+  ];
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -87,81 +145,146 @@ export default function ProductDetails() {
           </motion.div>
         )}
 
-        {/* Video Section with Influencer Info */}
-        {product.videos && product.videos.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mb-10"
-          >
-            <div className="flex items-center gap-2 mb-4">
+        {/* Influencer Section with Video Embeds */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mb-10"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
               <Users size={18} className="text-accent" />
-              <h3 className="font-display text-xl font-bold">Creator Reviews</h3>
+              <h3 className="font-display text-xl font-bold">Top Influencers</h3>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRefreshInfluencers}
+              disabled={refreshInfluencers.isPending}
+              data-testid="button-refresh-influencers"
+              className="gap-2"
+            >
+              {refreshInfluencers.isPending ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              Discover
+            </Button>
+          </div>
+
+          {allInfluencers.length > 0 ? (
             <div className="space-y-4">
-              {product.videos.map((video: any) => {
-                const PlatformIcon = video.platform === 'youtube' ? SiYoutube 
-                  : video.platform === 'tiktok' ? SiTiktok 
-                  : SiInstagram;
-                const platformColor = video.platform === 'youtube' ? 'text-red-500'
-                  : video.platform === 'tiktok' ? 'text-foreground'
-                  : 'text-pink-500';
+              {allInfluencers.slice(0, 5).map((influencer: any, index: number) => {
+                const PlatformIcon = getPlatformIcon(influencer.platform);
+                const platformColor = getPlatformColor(influencer.platform);
+                const embedUrl = influencer.embedUrl || getYouTubeEmbedUrl(influencer.videoUrl);
+                const canEmbed = isYouTubeUrl(influencer.videoUrl) && embedUrl;
+                const isExpanded = showVideoEmbed === index;
                 
                 return (
-                  <a 
-                    key={video.id} 
-                    href={video.videoUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex gap-4 bg-white p-3 rounded-xl border border-border shadow-sm hover:border-accent/50 transition-colors group"
-                    data-testid={`video-card-${video.id}`}
+                  <div 
+                    key={influencer.id || index}
+                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden"
+                    data-testid={`influencer-card-${index}`}
                   >
-                    {/* Thumbnail */}
-                    <div className="relative flex-shrink-0 w-24 aspect-[9/16] rounded-lg overflow-hidden">
-                      <img 
-                        src={video.thumbnailUrl || "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=200&h=300&fit=crop"} 
-                        alt={video.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                        <div className="w-8 h-8 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center">
-                          <Play size={14} fill="white" className="text-white ml-0.5" />
+                    {/* Influencer Info Row */}
+                    <div 
+                      className="flex gap-4 p-3 cursor-pointer hover:bg-secondary/30 transition-colors"
+                      onClick={() => canEmbed ? setShowVideoEmbed(isExpanded ? null : index) : window.open(influencer.videoUrl, '_blank')}
+                    >
+                      {/* Thumbnail */}
+                      <div className="relative flex-shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-secondary">
+                        {influencer.thumbnailUrl ? (
+                          <img 
+                            src={influencer.thumbnailUrl} 
+                            alt={influencer.videoTitle || influencer.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <PlatformIcon size={24} className={platformColor} />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-white/40 backdrop-blur-sm flex items-center justify-center">
+                            <Play size={10} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        </div>
+                        {/* Platform Badge */}
+                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
+                          <PlatformIcon size={10} />
                         </div>
                       </div>
-                      {/* Platform Badge */}
-                      <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
-                        <PlatformIcon size={12} />
-                      </div>
-                    </div>
-                    
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 py-1">
-                      <p className="text-sm font-medium text-foreground line-clamp-2 mb-2">
-                        {video.title}
-                      </p>
                       
-                      {/* Creator Info */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent">
-                          {video.creatorName?.charAt(0) || 'C'}
-                        </div>
-                        <div className="min-w-0">
+                      {/* Info */}
+                      <div className="flex-1 min-w-0 py-0.5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
+                            {influencer.name?.charAt(0) || 'I'}
+                          </div>
                           <p className="text-sm font-semibold text-foreground truncate">
-                            {video.creatorName || 'Creator'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {video.creatorHandle} • {video.creatorFollowers} followers
+                            {influencer.name || 'Influencer'}
                           </p>
                         </div>
+                        <p className="text-xs text-muted-foreground truncate mb-1">
+                          {influencer.handle} {influencer.followers && `• ${influencer.followers}`}
+                        </p>
+                        {influencer.videoTitle && (
+                          <p className="text-xs text-foreground/70 line-clamp-1">
+                            {influencer.videoTitle}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* External link indicator */}
+                      <div className="flex items-center">
+                        {canEmbed ? (
+                          <motion.div
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            className="text-muted-foreground"
+                          >
+                            <Play size={16} className={isExpanded ? 'text-accent' : ''} />
+                          </motion.div>
+                        ) : (
+                          <ExternalLink size={14} className="text-muted-foreground" />
+                        )}
                       </div>
                     </div>
-                  </a>
+
+                    {/* Embedded Video (YouTube only) */}
+                    {canEmbed && isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-border"
+                      >
+                        <div className="aspect-video w-full">
+                          <iframe
+                            src={embedUrl}
+                            title={influencer.videoTitle || 'Video review'}
+                            className="w-full h-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-          </motion.div>
-        )}
+          ) : (
+            <div className="p-6 bg-secondary/30 rounded-xl text-center">
+              <Users size={32} className="mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground mb-3">
+                No influencer data yet. Click "Discover" to find creators talking about this product.
+              </p>
+            </div>
+          )}
+        </motion.div>
 
         {/* Offers / Price Comparison */}
         <div>
@@ -172,10 +295,9 @@ export default function ProductDetails() {
                 <div 
                   key={offer.id} 
                   data-testid={`card-offer-${offer.id}`}
-                  className="bg-white p-4 rounded-xl border border-border shadow-sm flex items-center justify-between group hover:border-accent/50 transition-colors"
+                  className="bg-white dark:bg-card p-4 rounded-xl border border-border shadow-sm flex items-center justify-between group hover:border-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {/* Retailer Logo or Initial */}
                     <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center font-bold text-lg text-secondary-foreground overflow-hidden">
                       {offer.retailer.logoUrl ? (
                         <img src={offer.retailer.logoUrl} alt={offer.retailer.name} className="w-full h-full object-cover" />
@@ -186,7 +308,7 @@ export default function ProductDetails() {
                     <div>
                       <p className="font-semibold text-foreground">{offer.retailer.name}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        In Stock • Verified
+                        In Stock
                       </p>
                     </div>
                   </div>

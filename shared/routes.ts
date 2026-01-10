@@ -4,8 +4,11 @@ import {
   users, 
   products, 
   insertProductSchema,
-  insertClickSchema
+  insertClickSchema,
+  type InsertClick
 } from './schema';
+
+export type { InsertClick };
 
 export const errorSchemas = {
   validation: z.object({

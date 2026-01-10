@@ -3,9 +3,10 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth } from "./replit_integrations/auth"; // Correct path for auth
+import { setupAuth } from "./replit_integrations/auth";
 import { db } from "./db";
-import { products, retailers, productOffers, productVideos } from "@shared/schema";
+import { products, retailers, productOffers, productVideos, refreshLogs } from "@shared/schema";
+import { searchInfluencersForProduct, searchProductImage } from "./services/perplexity";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -92,6 +93,218 @@ export async function registerRoutes(
       res.status(201).json({ success: true });
     } catch (err) {
       res.status(400).json({ success: false });
+    }
+  });
+
+  // Refresh Trending - Discover influencers for a specific product
+  app.post("/api/products/:id/refresh-influencers", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    try {
+      // Log the refresh attempt
+      await db.insert(refreshLogs).values({
+        productId,
+        refreshType: 'influencers',
+        status: 'pending',
+        message: 'Starting influencer discovery...'
+      });
+
+      // Search for influencers using Perplexity AI
+      const influencers = await searchInfluencersForProduct(
+        product.name,
+        product.brand,
+        product.country
+      );
+
+      // Clear existing influencer mentions for this product
+      await storage.clearInfluencersForProduct(productId);
+
+      // Add new influencer mentions
+      for (const inf of influencers) {
+        await storage.addInfluencerMention(productId, {
+          name: inf.name,
+          handle: inf.handle,
+          platform: inf.platform,
+          followers: inf.followers,
+          videoUrl: inf.videoUrl,
+          videoTitle: inf.videoTitle,
+          thumbnailUrl: inf.thumbnailUrl || null,
+          embedUrl: inf.embedUrl || null
+        });
+      }
+
+      // Log success
+      await db.insert(refreshLogs).values({
+        productId,
+        refreshType: 'influencers',
+        status: 'success',
+        message: `Found ${influencers.length} influencers`
+      });
+
+      res.json({ 
+        success: true, 
+        influencersFound: influencers.length,
+        influencers 
+      });
+    } catch (error) {
+      console.error("Error refreshing influencers:", error);
+      
+      await db.insert(refreshLogs).values({
+        productId,
+        refreshType: 'influencers',
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+
+      res.status(500).json({ error: "Failed to refresh influencers" });
+    }
+  });
+
+  // Refresh product image from official sources
+  app.post("/api/products/:id/refresh-image", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    try {
+      const imageInfo = await searchProductImage(product.name, product.brand);
+      
+      if (imageInfo && imageInfo.officialImageUrl) {
+        await storage.updateProductImage(productId, imageInfo.officialImageUrl);
+        
+        await db.insert(refreshLogs).values({
+          productId,
+          refreshType: 'image',
+          status: 'success',
+          message: `Found image from ${imageInfo.source}`
+        });
+
+        res.json({ 
+          success: true, 
+          imageUrl: imageInfo.officialImageUrl,
+          source: imageInfo.source 
+        });
+      } else {
+        res.json({ success: false, message: "No official image found" });
+      }
+    } catch (error) {
+      console.error("Error refreshing image:", error);
+      res.status(500).json({ error: "Failed to refresh image" });
+    }
+  });
+
+  // Refresh all data for a product (influencers + image)
+  app.post("/api/products/:id/refresh-all", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    try {
+      // Parallel refresh of influencers and image
+      const [influencers, imageInfo] = await Promise.all([
+        searchInfluencersForProduct(product.name, product.brand, product.country),
+        searchProductImage(product.name, product.brand)
+      ]);
+
+      // Update influencers
+      await storage.clearInfluencersForProduct(productId);
+      for (const inf of influencers) {
+        await storage.addInfluencerMention(productId, {
+          name: inf.name,
+          handle: inf.handle,
+          platform: inf.platform,
+          followers: inf.followers,
+          videoUrl: inf.videoUrl,
+          videoTitle: inf.videoTitle,
+          thumbnailUrl: inf.thumbnailUrl || null,
+          embedUrl: inf.embedUrl || null
+        });
+      }
+
+      // Update image if found
+      let newImageUrl = product.imageUrl;
+      if (imageInfo && imageInfo.officialImageUrl) {
+        await storage.updateProductImage(productId, imageInfo.officialImageUrl);
+        newImageUrl = imageInfo.officialImageUrl;
+      }
+
+      await db.insert(refreshLogs).values({
+        productId,
+        refreshType: 'all',
+        status: 'success',
+        message: `Found ${influencers.length} influencers, image ${imageInfo ? 'updated' : 'unchanged'}`
+      });
+
+      res.json({ 
+        success: true, 
+        influencersFound: influencers.length,
+        imageUpdated: !!imageInfo,
+        newImageUrl
+      });
+    } catch (error) {
+      console.error("Error refreshing all data:", error);
+      res.status(500).json({ error: "Failed to refresh data" });
+    }
+  });
+
+  // Refresh all products (batch operation)
+  app.post("/api/refresh-trending", async (req, res) => {
+    try {
+      const allProducts = await storage.getAllProducts();
+      const results: { productId: number; name: string; status: string }[] = [];
+
+      // Process products sequentially to avoid rate limits
+      for (const product of allProducts) {
+        try {
+          const influencers = await searchInfluencersForProduct(
+            product.name,
+            product.brand,
+            product.country
+          );
+
+          await storage.clearInfluencersForProduct(product.id);
+          for (const inf of influencers) {
+            await storage.addInfluencerMention(product.id, {
+              name: inf.name,
+              handle: inf.handle,
+              platform: inf.platform,
+              followers: inf.followers,
+              videoUrl: inf.videoUrl,
+              videoTitle: inf.videoTitle,
+              thumbnailUrl: inf.thumbnailUrl || null,
+              embedUrl: inf.embedUrl || null
+            });
+          }
+
+          results.push({
+            productId: product.id,
+            name: product.name,
+            status: `Found ${influencers.length} influencers`
+          });
+        } catch (error) {
+          results.push({
+            productId: product.id,
+            name: product.name,
+            status: 'Failed'
+          });
+        }
+      }
+
+      res.json({ success: true, results });
+    } catch (error) {
+      console.error("Error in batch refresh:", error);
+      res.status(500).json({ error: "Failed to refresh trending data" });
     }
   });
 
