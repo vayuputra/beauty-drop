@@ -26,7 +26,7 @@ export default function Home() {
   }
 
   // If no country set, send to onboarding
-  if (!user.country) {
+  if (!userLoading && user && !user.country) {
     setLocation("/onboarding");
     return null;
   }

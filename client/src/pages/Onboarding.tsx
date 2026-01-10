@@ -5,6 +5,8 @@ import { OnboardingLayout } from "@/components/OnboardingLayout";
 import { Check, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@shared/routes";
 
 const COUNTRIES = [
   { id: "IN", label: "India", flag: "🇮🇳" },
@@ -26,6 +28,7 @@ const BUDGETS = [
 export default function Onboarding() {
   const { data: user } = useUser();
   const updateUser = useUpdateUser();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -57,7 +60,9 @@ export default function Onboarding() {
       country: formData.country,
       preferences: formData.preferences,
     }, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        // Ensure state is updated before navigating
+        queryClient.setQueryData([api.user.get.path], data);
         setLocation("/");
       }
     });
