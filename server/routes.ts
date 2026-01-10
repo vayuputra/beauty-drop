@@ -388,57 +388,57 @@ async function seedDatabase() {
     const [sephora] = await db.insert(retailers).values({
       name: "Sephora",
       country: "US",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Sephora_logo.svg/2560px-Sephora_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Sephora"
     }).returning();
 
     const [ulta] = await db.insert(retailers).values({
       name: "Ulta Beauty",
       country: "US",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Ulta_Beauty_logo.svg/1200px-Ulta_Beauty_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Ulta"
     }).returning();
 
     const [nykaa] = await db.insert(retailers).values({
       name: "Nykaa",
       country: "IN",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Nykaa_Logo.svg/1200px-Nykaa_Logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/fc2779/ffffff?text=Nykaa"
     }).returning();
 
     const [purplle] = await db.insert(retailers).values({
       name: "Purplle",
       country: "IN",
-      logoUrl: "https://cdn.purplle.com/static/img/logo.svg"
+      logoUrl: "https://placehold.co/100x40/8b5cf6/ffffff?text=Purplle"
     }).returning();
 
     // Additional India retailers for monetization
     const [amazonIn] = await db.insert(retailers).values({
       name: "Amazon India",
       country: "IN",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/1200px-Amazon_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
     }).returning();
 
     const [myntra] = await db.insert(retailers).values({
       name: "Myntra",
       country: "IN",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Myntra_logo.png/800px-Myntra_logo.png"
+      logoUrl: "https://placehold.co/100x40/ff3f6c/ffffff?text=Myntra"
     }).returning();
 
     const [tataCliq] = await db.insert(retailers).values({
       name: "Tata CLiQ",
       country: "IN",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Tata_CLiQ_logo.svg/800px-Tata_CLiQ_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/e91e63/ffffff?text=TataCLiQ"
     }).returning();
 
     const [sephoraIn] = await db.insert(retailers).values({
       name: "Sephora India",
       country: "IN",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Sephora_logo.svg/2560px-Sephora_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/000000/ffffff?text=Sephora"
     }).returning();
 
     // Additional US retailers
     const [amazonUs] = await db.insert(retailers).values({
       name: "Amazon",
       country: "US",
-      logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/1200px-Amazon_logo.svg.png"
+      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
     }).returning();
 
     // US Products with working images and video data
