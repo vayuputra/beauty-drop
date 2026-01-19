@@ -146,75 +146,29 @@ Only return the JSON array, no other text.`;
   }
 }
 
+const CATEGORY_IMAGES: Record<string, string> = {
+  'Makeup': 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600',
+  'Skincare': 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600',
+  'Nails': 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600',
+  'Body': 'https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600',
+  'Hair': 'https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=600',
+  'Fragrance': 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600',
+  'Tools': 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600',
+};
+
+export function getReliableImageForCategory(category: string): string {
+  return CATEGORY_IMAGES[category] || CATEGORY_IMAGES['Skincare'];
+}
+
 export async function searchProductImage(
   productName: string,
-  brand: string
+  brand: string,
+  category?: string
 ): Promise<ProductImageInfo | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.error("PERPLEXITY_API_KEY not set");
-    return null;
-  }
-
-  const prompt = `Find the official product image URL for "${productName}" by ${brand} from the brand's official website or major retailers like Sephora, Ulta, Nykaa.
-
-Return ONLY a JSON object with:
-- officialImageUrl: Direct URL to the product image (must be a valid image URL ending in .jpg, .png, .webp, or from a CDN like images-static.nykaa.com, sephora.com/productimages, etc.)
-- source: The source website name
-
-Return only the JSON object, no other text.`;
-
-  try {
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          {
-            role: "system",
-            content: "You are a product research assistant. Return only valid JSON with image URLs. No markdown, no explanations."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.1,
-        search_recency_filter: "month",
-        return_images: true,
-        stream: false
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("Perplexity API error:", response.status);
-      return null;
-    }
-
-    const data: PerplexityResponse = await response.json();
-    const content = data.choices[0]?.message?.content || "{}";
-    
-    let jsonStr = content.trim();
-    if (jsonStr.startsWith("```json")) {
-      jsonStr = jsonStr.slice(7);
-    }
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith("```")) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
-    jsonStr = jsonStr.trim();
-
-    const result: ProductImageInfo = JSON.parse(jsonStr);
-    return result;
-  } catch (error) {
-    console.error("Error searching product image:", error);
-    return null;
-  }
+  const imageUrl = getReliableImageForCategory(category || 'Skincare');
+  return {
+    officialImageUrl: imageUrl,
+    source: 'Unsplash'
+  };
 }
 

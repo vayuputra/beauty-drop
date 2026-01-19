@@ -179,7 +179,7 @@ export async function registerRoutes(
     }
 
     try {
-      const imageInfo = await searchProductImage(product.name, product.brand);
+      const imageInfo = await searchProductImage(product.name, product.brand, product.category);
       
       if (imageInfo && imageInfo.officialImageUrl) {
         await storage.updateProductImage(productId, imageInfo.officialImageUrl);
@@ -218,7 +218,7 @@ export async function registerRoutes(
       // Parallel refresh of influencers and image
       const [influencers, imageInfo] = await Promise.all([
         searchInfluencersForProduct(product.name, product.brand, product.country),
-        searchProductImage(product.name, product.brand)
+        searchProductImage(product.name, product.brand, product.category)
       ]);
 
       // Update influencers
@@ -336,7 +336,7 @@ export async function registerRoutes(
             continue;
           }
 
-          const imageInfo = await searchProductImage(product.name, product.brand);
+          const imageInfo = await searchProductImage(product.name, product.brand, product.category);
           
           if (imageInfo && imageInfo.officialImageUrl) {
             await storage.updateProductImage(product.id, imageInfo.officialImageUrl);
@@ -511,7 +511,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "A weightless, long-lasting liquid blush that blends and builds beautifully for a soft, healthy flush.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
         whyTrending: "Viral on TikTok for its high pigmentation and lasting power.",
         tags: { priceBand: "mid", finish: "dewy" },
         price: 23.00,
@@ -555,7 +555,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Iconic sheer berry tint that adapts to your unique chemistry for a personalized flush.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
         whyTrending: "90s nostalgia comeback! The OG universally flattering lip color.",
         tags: { priceBand: "mid", finish: "sheer" },
         price: 22.00,
@@ -589,7 +589,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "US",
         description: "Hyaluronic acid serum with watermelon, vitamin E, and light-reflecting pigments for instant glow.",
-        imageUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
         whyTrending: "Glass skin in a bottle! Celebrity makeup artists swear by it.",
         tags: { priceBand: "high", finish: "dewy" },
         price: 34.00,
@@ -633,7 +633,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Lengthening and volumizing mascara with flex tower brush for limitless length.",
-        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600",
         whyTrending: "Drugstore mascara that rivals luxury! 10M+ TikTok views.",
         tags: { priceBand: "budget", finish: "dramatic" },
         price: 13.99,
@@ -667,7 +667,7 @@ async function seedDatabase() {
         category: "Body",
         country: "US",
         description: "Fast-absorbing body cream with cupuacu butter and coconut oil for silky skin.",
-        imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600",
         whyTrending: "The iconic Brazilian scent everyone is obsessed with!",
         tags: { priceBand: "high", finish: "smooth" },
         price: 48.00,
@@ -691,7 +691,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Silky smooth lip balm with shea and murumuru seed butter for instant hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=600",
         whyTrending: "TikTok's favorite lip product! Clean ingredients, maximum hydration.",
         tags: { priceBand: "mid", finish: "glossy" },
         price: 24.00,
@@ -725,7 +725,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "US",
         description: "Lightweight essence with 96% snail secretion filtrate for deep hydration and skin repair.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
         whyTrending: "K-beauty cult favorite! 100M+ bottles sold worldwide.",
         tags: { priceBand: "budget", finish: "hydrating" },
         price: 25.00,
@@ -759,7 +759,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "US",
         description: "Seamless, buildable gel-cream blush for a natural, flushed-from-within look.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
         whyTrending: "The internet's favorite blush! So easy to apply.",
         tags: { priceBand: "mid", finish: "natural" },
         price: 20.00,
@@ -783,7 +783,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "US",
         description: "Pure retinol serum for reducing fine lines and improving skin texture.",
-        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600",
         whyTrending: "Affordable retinol that actually works! Dermatologist approved.",
         tags: { priceBand: "budget", finish: "anti-aging" },
         price: 8.90,
@@ -821,7 +821,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "IN",
         description: "Long stay matte lipstick enriched with vitamin E for comfortable wear.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
         whyTrending: "Katrina Kaif's brand, highly rated for Indian skin tones.",
         tags: { priceBand: "budget", finish: "matte" },
         price: 999.00,
@@ -855,7 +855,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Ayurvedic night serum with saffron and 16 precious herbs for radiant skin.",
-        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600",
         whyTrending: "Ancient Ayurvedic secret for bridal glow! Dermatologist approved.",
         tags: { priceBand: "high", finish: "radiant" },
         price: 2650.00,
@@ -899,7 +899,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Lightweight gel moisturizer with 5% marula oil and squalane for deep hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600",
         whyTrending: "Indian skincare brand going global! Clean beauty at its best.",
         tags: { priceBand: "budget", finish: "hydrating" },
         price: 599.00,
@@ -933,7 +933,7 @@ async function seedDatabase() {
         category: "Nails",
         country: "IN",
         description: "Long-lasting, chip-resistant nail polish in universally flattering nude shades.",
-        imageUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600",
         whyTrending: "Office-approved nudes that work for every occasion.",
         tags: { priceBand: "budget", finish: "glossy" },
         price: 250.00,
@@ -957,7 +957,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Korean-inspired brightening serum with fermented rice water and niacinamide.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
         whyTrending: "K-beauty meets Ayurveda! Vegan and cruelty-free.",
         tags: { priceBand: "mid", finish: "brightening" },
         price: 699.00,
@@ -991,7 +991,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Ethyl ascorbic acid with ferulic acid for bright, even-toned skin.",
-        imageUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
         whyTrending: "Affordable vitamin C that actually works! Pharmacy-grade ingredients.",
         tags: { priceBand: "budget", finish: "brightening" },
         price: 545.00,
@@ -1025,7 +1025,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "IN",
         description: "Smudge-proof, waterproof kajal for intense black definition that lasts all day.",
-        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600",
         whyTrending: "India's favorite kajal! Perfect for humid weather.",
         tags: { priceBand: "budget", finish: "matte" },
         price: 325.00,
@@ -1059,7 +1059,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Lightweight, non-greasy sunscreen with vitamin C for daily protection.",
-        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600",
         whyTrending: "Finally a sunscreen that doesn't leave white cast on Indian skin!",
         tags: { priceBand: "mid", finish: "matte" },
         price: 695.00,
@@ -1083,7 +1083,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "IN",
         description: "Silky smooth compact with built-in sunscreen for flawless matte finish.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
         whyTrending: "India's OG compact! Perfect for on-the-go touch ups.",
         tags: { priceBand: "budget", finish: "matte" },
         price: 295.00,
@@ -1107,7 +1107,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "BHA serum for acne-prone skin, helps unclog pores and reduce breakouts.",
-        imageUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=600",
         whyTrending: "Best affordable BHA serum in India! Dermat recommended.",
         tags: { priceBand: "budget", finish: "clarifying" },
         price: 549.00,
@@ -1141,7 +1141,7 @@ async function seedDatabase() {
         category: "Makeup",
         country: "IN",
         description: "Long-lasting matte liquid lipstick with intense pigmentation.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
         whyTrending: "Homegrown brand loved for bold Indian shades!",
         tags: { priceBand: "mid", finish: "matte" },
         price: 799.00,
@@ -1165,7 +1165,7 @@ async function seedDatabase() {
         category: "Skincare",
         country: "IN",
         description: "Oil-free night gel with green tea extracts for acne control and hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600&h=600&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600",
         whyTrending: "100% vegan and cruelty-free! Perfect for oily skin.",
         tags: { priceBand: "mid", finish: "hydrating" },
         price: 575.00,
