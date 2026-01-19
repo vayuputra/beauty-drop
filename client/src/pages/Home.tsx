@@ -50,7 +50,7 @@ export default function Home() {
   if (userLoading || !user || !user.country) return <div className="min-h-screen bg-background"><Loader /></div>;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 momentum-scroll">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md px-6 pt-12 pb-4 border-b border-border/40">
         <div className="max-w-md mx-auto flex justify-between items-center">
@@ -90,7 +90,7 @@ export default function Home() {
       </header>
 
       {/* Filter Chips */}
-      <div className="max-w-md mx-auto overflow-x-auto no-scrollbar py-4 px-6 flex gap-3 sticky top-[105px] z-30 bg-background/95 backdrop-blur-sm">
+      <div className="max-w-md mx-auto overflow-x-auto no-scrollbar horizontal-scroll py-4 px-6 flex gap-3 sticky top-[105px] z-30 bg-background/95 backdrop-blur-sm">
         {FILTERS.map(filter => (
           <button
             key={filter}

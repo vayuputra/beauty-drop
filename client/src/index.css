@@ -37,14 +37,26 @@
 }
 
 @layer base {
+  /* Smooth scrolling for the entire document */
+  html {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
   body {
     @apply bg-background text-foreground antialiased selection:bg-accent/20;
     font-family: var(--font-sans);
+    overscroll-behavior-y: contain;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     @apply font-semibold tracking-tight;
+  }
+
+  /* Optimize scroll performance */
+  * {
+    scroll-behavior: inherit;
   }
 }
 
@@ -60,5 +72,49 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Smooth scroll container for main content areas */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Enhanced momentum scrolling for touch devices */
+  .momentum-scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Horizontal smooth scroll with momentum */
+  .horizontal-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+
+  .horizontal-scroll > * {
+    scroll-snap-align: start;
+  }
+
+  /* Fade edges for horizontal scroll areas */
+  .scroll-fade {
+    mask-image: linear-gradient(
+      to right, 
+      transparent, 
+      black 1rem, 
+      black calc(100% - 1rem), 
+      transparent
+    );
+    -webkit-mask-image: linear-gradient(
+      to right, 
+      transparent, 
+      black 1rem, 
+      black calc(100% - 1rem), 
+      transparent
+    );
   }
 }

@@ -91,7 +91,7 @@ export default function ProductDetails() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-32">
+    <div className="min-h-screen bg-background pb-32 momentum-scroll">
       {/* Hero Image */}
       <div className="relative aspect-[4/5] w-full bg-secondary overflow-hidden">
         <Link href="/" data-testid="button-back" className="absolute top-12 left-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg text-foreground hover:scale-110 transition-transform">
