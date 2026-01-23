@@ -1,11 +1,14 @@
-import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
+import { ReviewSummary } from "@/components/ReviewSummary";
+import { useUser } from "@/hooks/use-user";
 
 function getPlaceholderUrl(brand: string, name: string): string {
   const text = encodeURIComponent(`${brand}\n${name.substring(0, 20)}`);
@@ -28,6 +31,14 @@ export default function ProductDetails() {
   const refreshInfluencers = useRefreshInfluencers();
   const refreshImage = useRefreshImage();
   const [imgError, setImgError] = useState(false);
+  
+  const { data: trustScoreData, isLoading: trustLoading } = useTrustScore(id);
+  const calculateTrustScore = useCalculateTrustScore();
+  const { data: reviewSummaryData, isLoading: reviewLoading } = useReviewSummary(id);
+  const generateReviewSummary = useGenerateReviewSummary();
+  const { data: user } = useUser();
+  const { data: priceTrackers } = usePriceTrackers();
+  const createPriceTracker = useCreatePriceTracker();
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -158,6 +169,141 @@ export default function ProductDetails() {
             <p className="text-foreground/80 text-sm font-medium">
               {product.whyTrending}
             </p>
+          </motion.div>
+        )}
+
+        {/* Trust Score Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="mb-8"
+        >
+          {trustScoreData?.exists ? (
+            <TrustScoreDetails data={{
+              trustScore: trustScoreData.trustScore,
+              label: trustScoreData.label,
+              color: trustScoreData.color,
+              redditSentimentScore: trustScoreData.redditSentimentScore,
+              engagementAuthenticityScore: trustScoreData.engagementAuthenticityScore,
+              redditMentions: trustScoreData.redditMentions
+            }} />
+          ) : (
+            <div className="bg-card rounded-xl p-4 border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground mb-1">Trust Score</h3>
+                  <p className="text-sm text-muted-foreground">Analyze Reddit sentiment & engagement authenticity</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => calculateTrustScore.mutate(id)}
+                  disabled={calculateTrustScore.isPending}
+                  data-testid="button-calculate-trust"
+                  className="gap-2"
+                >
+                  {calculateTrustScore.isPending ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  Calculate
+                </Button>
+              </div>
+            </div>
+          )}
+        </motion.div>
+
+        {/* AI Review Summary Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+          className="mb-8"
+        >
+          {reviewSummaryData?.exists ? (
+            <ReviewSummary data={{
+              summaryText: reviewSummaryData.summaryText,
+              climateSuitability: reviewSummaryData.climateSuitability,
+              skinTypeMatch: reviewSummaryData.skinTypeMatch,
+              prosHighlights: reviewSummaryData.prosHighlights,
+              consHighlights: reviewSummaryData.consHighlights,
+              sources: reviewSummaryData.sources
+            }} />
+          ) : (
+            <div className="bg-card rounded-xl p-4 border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground mb-1">AI Review Summary</h3>
+                  <p className="text-sm text-muted-foreground">Get climate & skin type recommendations</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => generateReviewSummary.mutate(id)}
+                  disabled={generateReviewSummary.isPending}
+                  data-testid="button-generate-summary"
+                  className="gap-2"
+                >
+                  {generateReviewSummary.isPending ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  Generate
+                </Button>
+              </div>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Price Tracker Section */}
+        {user && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.19 }}
+            className="mb-8"
+          >
+            {(() => {
+              const isTracking = priceTrackers?.some((t: any) => t.productId === id);
+              return (
+                <div className="bg-card rounded-xl p-4 border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {isTracking ? (
+                        <Bell size={18} className="text-primary" />
+                      ) : (
+                        <BellOff size={18} className="text-muted-foreground" />
+                      )}
+                      <div>
+                        <h3 className="font-semibold text-foreground">Price Alerts</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {isTracking ? 'You\'ll be notified on price drops' : 'Get notified when price drops'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={isTracking ? "secondary" : "default"}
+                      onClick={() => !isTracking && createPriceTracker.mutate({ productId: id, notifyOnAnyDrop: true })}
+                      disabled={isTracking || createPriceTracker.isPending}
+                      data-testid="button-track-price"
+                      className="gap-2"
+                    >
+                      {createPriceTracker.isPending ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : isTracking ? (
+                        'Tracking'
+                      ) : (
+                        'Track Price'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </motion.div>
         )}
 

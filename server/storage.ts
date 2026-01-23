@@ -1,8 +1,11 @@
 import { db } from "./db";
 import {
   users, products, retailers, productOffers, productVideos, clicks, influencerMentions,
+  productTrustScores, productReviewSummaries, priceTrackers, priceHistory,
   type User, type InsertUser, type UpdateUserRequest,
-  type Product, type ProductWithDetails, type ProductWithPriceRange, type InsertClick, type InfluencerMention
+  type Product, type ProductWithDetails, type ProductWithPriceRange, type InsertClick, type InfluencerMention,
+  type ProductTrustScore, type InsertTrustScore, type ProductReviewSummary, type InsertReviewSummary,
+  type PriceTracker, type InsertPriceTracker, type PriceHistory, type InsertPriceHistory
 } from "@shared/schema";
 import { eq, gt, desc, and, sql } from "drizzle-orm";
 
@@ -26,6 +29,25 @@ export interface IStorage {
   
   // Analytics
   trackClick(click: InsertClick): Promise<void>;
+  
+  // Trust Scores
+  getTrustScore(productId: number): Promise<ProductTrustScore | undefined>;
+  upsertTrustScore(trustScore: InsertTrustScore): Promise<ProductTrustScore>;
+  
+  // Review Summaries
+  getReviewSummary(productId: number): Promise<ProductReviewSummary | undefined>;
+  upsertReviewSummary(summary: InsertReviewSummary): Promise<ProductReviewSummary>;
+  
+  // Price Tracking
+  getPriceTracker(userId: string, productId: number): Promise<PriceTracker | undefined>;
+  getUserPriceTrackers(userId: string): Promise<PriceTracker[]>;
+  createPriceTracker(tracker: InsertPriceTracker): Promise<PriceTracker>;
+  updatePriceTracker(id: number, updates: Partial<InsertPriceTracker>): Promise<PriceTracker>;
+  deletePriceTracker(id: number): Promise<void>;
+  
+  // Price History
+  addPriceHistory(entry: InsertPriceHistory): Promise<void>;
+  getPriceHistory(productId: number, limit?: number): Promise<PriceHistory[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -155,6 +177,86 @@ export class DatabaseStorage implements IStorage {
 
   async trackClick(click: InsertClick): Promise<void> {
     await db.insert(clicks).values(click);
+  }
+
+  async getTrustScore(productId: number): Promise<ProductTrustScore | undefined> {
+    const [score] = await db.select().from(productTrustScores).where(eq(productTrustScores.productId, productId));
+    return score;
+  }
+
+  async upsertTrustScore(trustScore: InsertTrustScore): Promise<ProductTrustScore> {
+    const existing = await this.getTrustScore(trustScore.productId);
+    if (existing) {
+      const [updated] = await db.update(productTrustScores)
+        .set({
+          ...trustScore,
+          lastCalculated: new Date()
+        })
+        .where(eq(productTrustScores.productId, trustScore.productId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(productTrustScores).values(trustScore).returning();
+    return created;
+  }
+
+  async getReviewSummary(productId: number): Promise<ProductReviewSummary | undefined> {
+    const [summary] = await db.select().from(productReviewSummaries).where(eq(productReviewSummaries.productId, productId));
+    return summary;
+  }
+
+  async upsertReviewSummary(summary: InsertReviewSummary): Promise<ProductReviewSummary> {
+    const existing = await this.getReviewSummary(summary.productId);
+    if (existing) {
+      const [updated] = await db.update(productReviewSummaries)
+        .set({
+          ...summary,
+          generatedAt: new Date()
+        })
+        .where(eq(productReviewSummaries.productId, summary.productId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(productReviewSummaries).values(summary).returning();
+    return created;
+  }
+
+  async getPriceTracker(userId: string, productId: number): Promise<PriceTracker | undefined> {
+    const [tracker] = await db.select().from(priceTrackers)
+      .where(and(eq(priceTrackers.userId, userId), eq(priceTrackers.productId, productId)));
+    return tracker;
+  }
+
+  async getUserPriceTrackers(userId: string): Promise<PriceTracker[]> {
+    return await db.select().from(priceTrackers).where(eq(priceTrackers.userId, userId));
+  }
+
+  async createPriceTracker(tracker: InsertPriceTracker): Promise<PriceTracker> {
+    const [created] = await db.insert(priceTrackers).values(tracker).returning();
+    return created;
+  }
+
+  async updatePriceTracker(id: number, updates: Partial<InsertPriceTracker>): Promise<PriceTracker> {
+    const [updated] = await db.update(priceTrackers)
+      .set(updates)
+      .where(eq(priceTrackers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePriceTracker(id: number): Promise<void> {
+    await db.delete(priceTrackers).where(eq(priceTrackers.id, id));
+  }
+
+  async addPriceHistory(entry: InsertPriceHistory): Promise<void> {
+    await db.insert(priceHistory).values(entry);
+  }
+
+  async getPriceHistory(productId: number, limit = 30): Promise<PriceHistory[]> {
+    return await db.select().from(priceHistory)
+      .where(eq(priceHistory.productId, productId))
+      .orderBy(desc(priceHistory.observedAt))
+      .limit(limit);
   }
 }
 

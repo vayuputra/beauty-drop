@@ -5,8 +5,14 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth } from "./replit_integrations/auth";
 import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs } from "@shared/schema";
 import { searchInfluencersForProduct, searchProductImage } from "./services/perplexity";
+import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
+import { generateProductReviewSummary } from "./services/reviewSynthesis";
+import { verifyProductImage } from "./services/imageVerification";
+import { generateSmartLink } from "./services/deepLinks";
+import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -432,6 +438,237 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Image proxy error:', error);
       res.status(500).json({ error: 'Failed to proxy image' });
+    }
+  });
+
+  // Trust Score Routes
+  app.get("/api/products/:id/trust-score", async (req, res) => {
+    const productId = Number(req.params.id);
+    const trustScore = await storage.getTrustScore(productId);
+    
+    if (!trustScore) {
+      return res.json({ exists: false, message: "No trust score calculated yet" });
+    }
+    
+    const label = getTrustLabel(trustScore.trustScore);
+    res.json({
+      exists: true,
+      ...trustScore,
+      label: label.label,
+      color: label.color
+    });
+  });
+
+  app.post("/api/products/:id/calculate-trust-score", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    try {
+      const trustScoreData = await generateProductTrustScore(product);
+      const savedScore = await storage.upsertTrustScore(trustScoreData);
+      const label = getTrustLabel(savedScore.trustScore);
+      
+      res.json({
+        success: true,
+        trustScore: savedScore,
+        label: label.label,
+        color: label.color
+      });
+    } catch (error) {
+      console.error("Error calculating trust score:", error);
+      res.status(500).json({ error: "Failed to calculate trust score" });
+    }
+  });
+
+  // Review Summary Routes
+  app.get("/api/products/:id/review-summary", async (req, res) => {
+    const productId = Number(req.params.id);
+    const summary = await storage.getReviewSummary(productId);
+    
+    if (!summary) {
+      return res.json({ exists: false, message: "No review summary generated yet" });
+    }
+    
+    res.json({ exists: true, ...summary });
+  });
+
+  app.post("/api/products/:id/generate-review-summary", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    try {
+      const summaryData = await generateProductReviewSummary(product);
+      const savedSummary = await storage.upsertReviewSummary(summaryData);
+      
+      res.json({
+        success: true,
+        reviewSummary: savedSummary
+      });
+    } catch (error) {
+      console.error("Error generating review summary:", error);
+      res.status(500).json({ error: "Failed to generate review summary" });
+    }
+  });
+
+  // Price Tracker Routes
+  app.get("/api/price-trackers", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+    
+    const trackers = await storage.getUserPriceTrackers(userId);
+    res.json(trackers);
+  });
+
+  app.post("/api/products/:id/price-tracker", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+    
+    const productId = Number(req.params.id);
+    const { targetPrice, notifyOnAnyDrop } = req.body;
+    
+    const existing = await storage.getPriceTracker(userId, productId);
+    if (existing) {
+      return res.status(400).json({ error: "Already tracking this product" });
+    }
+    
+    const tracker = await storage.createPriceTracker({
+      userId,
+      productId,
+      targetPrice: targetPrice || null,
+      notifyOnAnyDrop: notifyOnAnyDrop ?? true,
+      isActive: true
+    });
+    
+    res.status(201).json(tracker);
+  });
+
+  app.delete("/api/price-trackers/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+    
+    await storage.deletePriceTracker(Number(req.params.id));
+    res.json({ success: true });
+  });
+
+  app.get("/api/products/:id/price-history", async (req, res) => {
+    const productId = Number(req.params.id);
+    const limit = Number(req.query.limit) || 30;
+    const history = await storage.getPriceHistory(productId, limit);
+    res.json(history);
+  });
+
+  // Image Verification Route
+  app.post("/api/products/:id/verify-image", async (req, res) => {
+    const productId = Number(req.params.id);
+    const product = await storage.getProduct(productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (!product.imageUrl) {
+      return res.status(400).json({ error: "Product has no image to verify" });
+    }
+
+    try {
+      const verification = await verifyProductImage(product, product.imageUrl);
+      res.json({
+        success: true,
+        verification
+      });
+    } catch (error) {
+      console.error("Error verifying image:", error);
+      res.status(500).json({ error: "Failed to verify image" });
+    }
+  });
+
+  // Smart Deep Link Route
+  app.get("/api/smart-link", async (req, res) => {
+    const { retailer, url } = req.query;
+    
+    if (!retailer || !url) {
+      return res.status(400).json({ error: "Missing retailer or url parameter" });
+    }
+
+    const userAgent = req.headers['user-agent'] || '';
+    const smartLink = generateSmartLink(
+      retailer as string,
+      url as string,
+      userAgent
+    );
+    
+    res.json({ smartLink });
+  });
+
+  // Redirect with smart deep link
+  app.get("/api/go/:offerId", async (req, res) => {
+    try {
+      const { offerId } = req.params;
+      
+      const [offer] = await db.select().from(productOffers).where(eq(productOffers.id, Number(offerId)));
+      if (!offer) {
+        return res.redirect('/');
+      }
+
+      const [retailer] = await db.select().from(retailers).where(eq(retailers.id, offer.retailerId));
+      if (!retailer) {
+        return res.redirect(offer.affiliateUrl);
+      }
+
+      const userAgent = req.headers['user-agent'] || '';
+      const smartLink = generateSmartLink(retailer.name, offer.affiliateUrl, userAgent);
+      
+      res.redirect(smartLink);
+    } catch (error) {
+      console.error("Smart link redirect error:", error);
+      res.redirect('/');
+    }
+  });
+
+  // Weekly Digest Routes
+  app.get("/api/weekly-digest", async (req, res) => {
+    try {
+      const country = req.query.country as string | undefined;
+      const digest = await generateWeeklyDigest(country);
+      res.json(digest);
+    } catch (error) {
+      console.error("Error generating weekly digest:", error);
+      res.status(500).json({ error: "Failed to generate weekly digest" });
+    }
+  });
+
+  app.get("/api/weekly-digest/latest", async (req, res) => {
+    try {
+      const digest = await getLatestDigest();
+      if (!digest) {
+        return res.json({ exists: false, message: "No digest available yet" });
+      }
+      res.json({ exists: true, ...digest });
+    } catch (error) {
+      console.error("Error fetching latest digest:", error);
+      res.status(500).json({ error: "Failed to fetch digest" });
+    }
+  });
+
+  app.post("/api/weekly-digest/generate", async (req, res) => {
+    try {
+      const country = req.body.country as string | undefined;
+      const digest = await saveWeeklyDigest(country);
+      res.json({ success: true, digest });
+    } catch (error) {
+      console.error("Error saving weekly digest:", error);
+      res.status(500).json({ error: "Failed to save digest" });
     }
   });
 
