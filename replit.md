@@ -10,6 +10,12 @@ Key features:
 - Embedded creator/review videos from YouTube, Instagram, TikTok
 - Affiliate link tracking and click analytics
 - User onboarding with country selection and beauty preferences
+- **Trust Score Engine**: 1-100 score based on Reddit sentiment (70% weight) and engagement authenticity (30% weight)
+- **AI Review Synthesis**: GPT-4o powered summaries with climate suitability and skin type matching
+- **Price Tracking**: User-set alerts with 6-hour background price checks
+- **Weekly Digest**: Sunday reset feature tracking price volatility and social mentions
+- **Deep-Linking**: Android intent URLs and iOS universal links for native app redirects
+- **Image Verification**: GPT-4o Vision to verify product image authenticity
 
 ## User Preferences
 
@@ -46,6 +52,12 @@ Preferred communication style: Simple, everyday language.
 - **ProductOffers**: Price/affiliate link per product-retailer combination
 - **ProductVideos**: Embedded video links from creator platforms
 - **Clicks**: Analytics tracking for affiliate link clicks
+- **TrustScores**: Computed trust metrics (Reddit sentiment 70%, engagement authenticity 30%)
+- **ReviewSummaries**: AI-generated product review summaries with climate/skin type analysis
+- **PriceTrackers**: User price alert configurations with target prices
+- **PriceHistory**: Historical price records for tracking and alerts
+- **WeeklyDigests**: Generated digests with top products for the week
+- **InfluencerMentions**: Tracked social media mentions for products
 
 ### Build System
 - **Development**: Vite dev server with HMR, proxied through Express
@@ -62,12 +74,27 @@ Preferred communication style: Simple, everyday language.
 - Replit OpenID Connect authentication (`ISSUER_URL`, `REPL_ID`, `SESSION_SECRET` environment variables)
 - Social login handled via Replit's OAuth flow
 
-### Third-Party Services (Planned/Referenced)
+### Third-Party Services
+- **OpenAI (via Replit AI Integrations)**: GPT-4o for review synthesis, GPT-4o Vision for image verification
+- **Perplexity API**: Influencer discovery and product image search
 - **Affiliate Networks**: Amazon Associates, Nykaa Affiliate, Sephora, Ulta affiliate programs
 - **Video Platforms**: YouTube, Instagram, TikTok embeds for creator content
 - **Retailers by Region**:
-  - India: Nykaa, Amazon India, Myntra, Ajio
+  - India: Nykaa, Amazon India, Myntra, Purplle, Tata CLiQ
   - US: Amazon US, Sephora, Ulta
+
+### Background Jobs
+- **Price Check Job**: Runs every 6 hours to check prices and trigger alerts
+- Job starts automatically on server start in `server/index.ts`
+
+### Key Services (server/services/)
+- `trustScore.ts`: Trust score calculation with Reddit sentiment analysis
+- `reviewSynthesis.ts`: GPT-4o powered review summaries with climate/skin type
+- `priceChecker.ts`: Background price checking and alert generation
+- `weeklyDigest.ts`: Weekly digest generation filtering to last 7 days
+- `deepLinks.ts`: Smart deep-linking for native app redirects
+- `imageVerification.ts`: GPT-4o Vision product image verification
+- `perplexity.ts`: Influencer and image search via Perplexity API
 
 ### Key NPM Packages
 - `drizzle-orm` / `drizzle-zod`: Database ORM and validation
