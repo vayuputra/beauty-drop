@@ -165,10 +165,99 @@ export async function searchProductImage(
   brand: string,
   category?: string
 ): Promise<ProductImageInfo | null> {
-  const imageUrl = getReliableImageForCategory(category || 'Skincare');
-  return {
-    officialImageUrl: imageUrl,
-    source: 'Unsplash'
-  };
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) {
+    console.error("PERPLEXITY_API_KEY not set, using category fallback");
+    const imageUrl = getReliableImageForCategory(category || 'Skincare');
+    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+  }
+
+  const prompt = `Find the official product image URL for "${productName}" by ${brand}.
+
+I need the direct URL to the actual product photo (the real product packaging/bottle/tube image, NOT a stock photo).
+
+Search for the image on:
+1. The official ${brand} website
+2. Major retailers like Sephora, Ulta, Amazon, Nykaa
+3. The brand's official product pages
+
+Return ONLY a JSON object with:
+{
+  "imageUrl": "direct URL to the product image (must be a .jpg, .png, or .webp file, or a CDN image URL)",
+  "source": "website name where you found it"
+}
+
+Requirements:
+- The URL must be a direct link to an image file or CDN-hosted image
+- Must be the actual product photo showing the real packaging
+- Prefer high-resolution images (at least 400x400 pixels)
+- Do NOT return generic category images or stock photos
+
+Return ONLY the JSON object, no other text.`;
+
+  try {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          {
+            role: "system",
+            content: "You are a product research assistant. Return only valid JSON with image URLs. No markdown, no explanations. Only return direct image URLs from official sources."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.1,
+        return_images: true,
+        stream: false
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Perplexity API error:", response.status, await response.text());
+      const imageUrl = getReliableImageForCategory(category || 'Skincare');
+      return { officialImageUrl: imageUrl, source: 'Unsplash' };
+    }
+
+    const data: PerplexityResponse = await response.json();
+    const content = data.choices[0]?.message?.content || "{}";
+    
+    let jsonStr = content.trim();
+    if (jsonStr.startsWith("```json")) {
+      jsonStr = jsonStr.slice(7);
+    }
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.slice(3);
+    }
+    if (jsonStr.endsWith("```")) {
+      jsonStr = jsonStr.slice(0, -3);
+    }
+    jsonStr = jsonStr.trim();
+
+    const result = JSON.parse(jsonStr);
+    
+    if (result.imageUrl && typeof result.imageUrl === 'string' && result.imageUrl.startsWith('http')) {
+      console.log(`Found product image for ${brand} ${productName}: ${result.imageUrl}`);
+      return {
+        officialImageUrl: result.imageUrl,
+        source: result.source || 'Web Search'
+      };
+    }
+    
+    console.log(`No valid image found for ${brand} ${productName}, using fallback`);
+    const imageUrl = getReliableImageForCategory(category || 'Skincare');
+    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+  } catch (error) {
+    console.error("Error searching product image:", error);
+    const imageUrl = getReliableImageForCategory(category || 'Skincare');
+    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+  }
 }
 
