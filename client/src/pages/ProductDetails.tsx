@@ -1,4 +1,4 @@
-import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
 import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff } from "lucide-react";
@@ -39,6 +39,7 @@ export default function ProductDetails() {
   const { data: user } = useUser();
   const { data: priceTrackers } = usePriceTrackers();
   const createPriceTracker = useCreatePriceTracker();
+  const refreshPrices = useRefreshPrices();
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -171,6 +172,112 @@ export default function ProductDetails() {
             </p>
           </motion.div>
         )}
+
+        {/* Influencer Section with Video Embeds - MOVED UP */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="mb-10"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-accent" />
+              <h3 className="font-display text-xl font-bold">Product Videos</h3>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRefreshInfluencers}
+              disabled={refreshInfluencers.isPending}
+              data-testid="button-refresh-influencers"
+              className="gap-2"
+            >
+              {refreshInfluencers.isPending ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              Discover
+            </Button>
+          </div>
+
+          {allInfluencers.length > 0 ? (
+            <div className="space-y-4">
+              {allInfluencers.slice(0, 5).map((influencer: any, index: number) => {
+                const PlatformIcon = getPlatformIcon(influencer.platform);
+                const platformColor = getPlatformColor(influencer.platform);
+                
+                return (
+                  <div 
+                    key={influencer.id || index}
+                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden cursor-pointer hover:border-accent/50 transition-colors"
+                    data-testid={`influencer-card-${index}`}
+                    onClick={() => window.open(influencer.videoUrl, '_blank')}
+                  >
+                    <div className="flex gap-4 p-3">
+                      {/* Thumbnail */}
+                      <div className="relative flex-shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-secondary">
+                        {influencer.thumbnailUrl ? (
+                          <img 
+                            src={influencer.thumbnailUrl} 
+                            alt={influencer.videoTitle || influencer.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <PlatformIcon size={24} className={platformColor} />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-white/40 backdrop-blur-sm flex items-center justify-center">
+                            <Play size={10} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        </div>
+                        {/* Platform Badge */}
+                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
+                          <PlatformIcon size={10} />
+                        </div>
+                      </div>
+                      
+                      {/* Info */}
+                      <div className="flex-1 min-w-0 py-0.5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
+                            {influencer.name?.charAt(0) || 'I'}
+                          </div>
+                          <p className="text-sm font-semibold text-foreground truncate">
+                            {influencer.name || 'Influencer'}
+                          </p>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mb-1">
+                          {influencer.handle} {influencer.followers && `• ${influencer.followers}`}
+                        </p>
+                        {influencer.videoTitle && (
+                          <p className="text-xs text-foreground/70 line-clamp-1">
+                            {influencer.videoTitle}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* External link indicator */}
+                      <div className="flex items-center">
+                        <ExternalLink size={14} className="text-muted-foreground" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-6 bg-secondary/30 rounded-xl text-center">
+              <Users size={32} className="mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground mb-3">
+                No video reviews yet. Click "Discover" to find creators talking about this product.
+              </p>
+            </div>
+          )}
+        </motion.div>
 
         {/* Trust Score Section */}
         <motion.div
@@ -307,115 +414,26 @@ export default function ProductDetails() {
           </motion.div>
         )}
 
-        {/* Influencer Section with Video Embeds */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-10"
-        >
+        {/* Offers / Price Comparison */}
+        <div>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Users size={18} className="text-accent" />
-              <h3 className="font-display text-xl font-bold">Top Influencers</h3>
-            </div>
+            <h3 className="font-display text-xl font-bold">Shop Now</h3>
             <Button
               size="sm"
               variant="outline"
-              onClick={handleRefreshInfluencers}
-              disabled={refreshInfluencers.isPending}
-              data-testid="button-refresh-influencers"
+              onClick={() => refreshPrices.mutate(id)}
+              disabled={refreshPrices.isPending}
+              data-testid="button-refresh-prices"
               className="gap-2"
             >
-              {refreshInfluencers.isPending ? (
+              {refreshPrices.isPending ? (
                 <RefreshCw size={14} className="animate-spin" />
               ) : (
-                <Sparkles size={14} />
+                <RefreshCw size={14} />
               )}
-              Discover
+              Refresh Prices
             </Button>
           </div>
-
-          {allInfluencers.length > 0 ? (
-            <div className="space-y-4">
-              {allInfluencers.slice(0, 5).map((influencer: any, index: number) => {
-                const PlatformIcon = getPlatformIcon(influencer.platform);
-                const platformColor = getPlatformColor(influencer.platform);
-                
-                return (
-                  <div 
-                    key={influencer.id || index}
-                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden cursor-pointer hover:border-accent/50 transition-colors"
-                    data-testid={`influencer-card-${index}`}
-                    onClick={() => window.open(influencer.videoUrl, '_blank')}
-                  >
-                    <div className="flex gap-4 p-3">
-                      {/* Thumbnail */}
-                      <div className="relative flex-shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-secondary">
-                        {influencer.thumbnailUrl ? (
-                          <img 
-                            src={influencer.thumbnailUrl} 
-                            alt={influencer.videoTitle || influencer.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <PlatformIcon size={24} className={platformColor} />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                          <div className="w-6 h-6 rounded-full bg-white/40 backdrop-blur-sm flex items-center justify-center">
-                            <Play size={10} fill="white" className="text-white ml-0.5" />
-                          </div>
-                        </div>
-                        {/* Platform Badge */}
-                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
-                          <PlatformIcon size={10} />
-                        </div>
-                      </div>
-                      
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 py-0.5">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
-                            {influencer.name?.charAt(0) || 'I'}
-                          </div>
-                          <p className="text-sm font-semibold text-foreground truncate">
-                            {influencer.name || 'Influencer'}
-                          </p>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mb-1">
-                          {influencer.handle} {influencer.followers && `• ${influencer.followers}`}
-                        </p>
-                        {influencer.videoTitle && (
-                          <p className="text-xs text-foreground/70 line-clamp-1">
-                            {influencer.videoTitle}
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* External link indicator */}
-                      <div className="flex items-center">
-                        <ExternalLink size={14} className="text-muted-foreground" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="p-6 bg-secondary/30 rounded-xl text-center">
-              <Users size={32} className="mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground mb-3">
-                No influencer data yet. Click "Discover" to find creators talking about this product.
-              </p>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Offers / Price Comparison */}
-        <div>
-          <h3 className="font-display text-xl font-bold mb-4">Shop Now</h3>
           <div className="space-y-3">
             {product.offers && product.offers.length > 0 ? (
               product.offers.map((offer: any) => (

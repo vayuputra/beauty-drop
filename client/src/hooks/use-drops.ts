@@ -137,6 +137,26 @@ export function useRefreshAllImages() {
   });
 }
 
+// Refresh prices for a product
+export function useRefreshPrices() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (productId: number) => {
+      const res = await fetch(`/api/products/${productId}/refresh-prices`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to refresh prices");
+      return await res.json();
+    },
+    onSuccess: (_, productId) => {
+      queryClient.invalidateQueries({ queryKey: [api.products.get.path, productId] });
+    },
+  });
+}
+
 // Trust Score hooks
 export function useTrustScore(productId: number) {
   return useQuery({
