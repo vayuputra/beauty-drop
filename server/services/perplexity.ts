@@ -156,6 +156,81 @@ const CATEGORY_IMAGES: Record<string, string> = {
   'Tools': 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600',
 };
 
+const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
+  'rare beauty soft pinch liquid blush': {
+    url: 'https://www.sephora.com/productimages/sku/s2514168-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'sol de janeiro brazilian bum bum cream': {
+    url: 'https://www.sephora.com/productimages/sku/s1863392-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'clinique black honey lip balm': {
+    url: 'https://www.sephora.com/productimages/sku/s1926058-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'glow recipe watermelon glow dew drops': {
+    url: 'https://www.sephora.com/productimages/sku/s2262354-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'maybelline lash sensational sky high mascara': {
+    url: 'https://www.maybelline.com/-/media/project/loreal/brand-sites/mny/americas/us/products/eye-makeup/mascara/lash-sensational-sky-high-washable-mascara/maybelline-mascara-lash-sensational-sky-high-very-black-041554578706-o.jpg',
+    source: 'Maybelline'
+  },
+  'glossier cloud paint': {
+    url: 'https://www.sephora.com/productimages/sku/s2662645-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'cosrx snail mucin 96% power essence': {
+    url: 'https://m.media-amazon.com/images/I/61D-D7D9bkL._SL1500_.jpg',
+    source: 'Amazon'
+  },
+  'the ordinary retinol 0.5 treatment': {
+    url: 'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw95a0c2f1/Images/products/The%20Ordinary/rdn-retinol-05-in-squalane-30ml.png',
+    source: 'The Ordinary'
+  },
+  'minimalist salicylic acid 2% face serum': {
+    url: 'https://m.media-amazon.com/images/I/51S9IbhvtaL._SL1100_.jpg',
+    source: 'Amazon'
+  },
+  'minimalist vitamin c 10% face serum': {
+    url: 'https://m.media-amazon.com/images/I/51Cv+PShgjL._SL1100_.jpg',
+    source: 'Amazon'
+  },
+  'minimalist hydra boost moisturizer': {
+    url: 'https://m.media-amazon.com/images/I/51kl9cIU6BL._SL1100_.jpg',
+    source: 'Amazon'
+  },
+  'plum rice water brightening serum': {
+    url: 'https://m.media-amazon.com/images/I/51R8o6wpGxL._SL1200_.jpg',
+    source: 'Amazon'
+  },
+  'plum green tea night gel': {
+    url: 'https://m.media-amazon.com/images/I/61RiS3u8XcL._SL1200_.jpg',
+    source: 'Amazon'
+  },
+  'sugar cosmetics liquid lipstick matte': {
+    url: 'https://m.media-amazon.com/images/I/51Y3DCBWMVL._SL1500_.jpg',
+    source: 'Amazon'
+  },
+  'lakme nude nail enamel collection': {
+    url: 'https://m.media-amazon.com/images/I/71+7aK7oJqL._SL1500_.jpg',
+    source: 'Amazon'
+  },
+  'forest essentials kumkumadi tailam face oil': {
+    url: 'https://m.media-amazon.com/images/I/61E0WKRdX6L._SL1500_.jpg',
+    source: 'Amazon'
+  },
+  'dot & key sunscreen spf 50 pa++++': {
+    url: 'https://m.media-amazon.com/images/I/51Zk-vCNl-L._SL1200_.jpg',
+    source: 'Amazon'
+  },
+  'dot & key compact powder spf 15': {
+    url: 'https://m.media-amazon.com/images/I/51e6gL1aJYL._SL1200_.jpg',
+    source: 'Amazon'
+  }
+};
+
 export function getReliableImageForCategory(category: string): string {
   return CATEGORY_IMAGES[category] || CATEGORY_IMAGES['Skincare'];
 }
@@ -165,6 +240,22 @@ export async function searchProductImage(
   brand: string,
   category?: string
 ): Promise<ProductImageInfo | null> {
+  // First, check if we have a known image for this product
+  const lookupKey = `${brand.toLowerCase()} ${productName.toLowerCase()}`;
+  const knownImage = KNOWN_PRODUCT_IMAGES[lookupKey];
+  if (knownImage) {
+    console.log(`Using known image for ${brand} ${productName}: ${knownImage.url}`);
+    return { officialImageUrl: knownImage.url, source: knownImage.source };
+  }
+
+  // Also try with just the product name
+  const productOnlyKey = productName.toLowerCase();
+  const knownImageByName = KNOWN_PRODUCT_IMAGES[productOnlyKey];
+  if (knownImageByName) {
+    console.log(`Using known image for ${productName}: ${knownImageByName.url}`);
+    return { officialImageUrl: knownImageByName.url, source: knownImageByName.source };
+  }
+
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) {
     console.error("PERPLEXITY_API_KEY not set, using category fallback");
