@@ -103,3 +103,50 @@ Preferred communication style: Simple, everyday language.
 - `wouter`: Client routing
 - `passport` / `express-session`: Authentication middleware
 - `zod`: Runtime validation
+
+## Python Price Fetcher Service
+
+### Overview
+A FastAPI-based Python service for real-time price and image fetching across multiple beauty retailers.
+
+### Location
+`python_fetcher/` directory containing:
+- `main.py`: FastAPI application with endpoints
+- `fetcher.py`: Main data fetching logic (SerpApi + fallback)
+- `scraper.py`: Playwright-based fallback scraper for og:image extraction
+- `image_verifier.py`: GPT-4o Vision for product image verification
+- `price_normalizer.py`: INR/USD currency normalization
+- `cache.py`: In-memory cache with 6-hour TTL
+- `models.py`: Pydantic models for request/response types
+
+### Running the Python Service
+```bash
+cd python_fetcher && python main.py
+```
+Runs on port 8000 by default.
+
+### API Endpoints
+- `POST /fetch` - Fetch product data from all specified retailers
+- `POST /fetch/single` - Fetch from a single retailer
+- `POST /refresh` - Trigger background refresh if data is stale (>6 hours)
+- `GET /cache/stats` - View cache statistics
+- `GET /health` - Health check
+
+### Environment Variables Required
+- `SERPAPI_KEY` - SerpApi key for Google Shopping search
+- `OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_API_KEY` - For GPT-4o Vision verification
+- `PYTHON_FETCHER_PORT` - Optional, defaults to 8000
+
+### Integration with Node.js Backend
+The Node.js server integrates via `server/services/priceFetcher.ts`:
+- `POST /api/prices/fetch` - Proxy to Python fetcher
+- `POST /api/prices/refresh` - Trigger background refresh
+- `GET /api/prices/health` - Check Python service health
+
+### Features
+- SerpApi Google Shopping as primary data source
+- Playwright fallback scraper for when API is unavailable
+- GPT-4o Vision image verification to detect brand/product mismatches
+- Automatic currency conversion (INR ↔ USD)
+- Availability status extraction (In Stock/Out of Stock)
+- 6-hour cache with background refresh on stale data

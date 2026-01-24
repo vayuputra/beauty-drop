@@ -13,6 +13,7 @@ import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
 import { generateSmartLink } from "./services/deepLinks";
 import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
+import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -669,6 +670,54 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error saving weekly digest:", error);
       res.status(500).json({ error: "Failed to save digest" });
+    }
+  });
+
+  // Price Fetcher Integration Routes (Python Service)
+  app.post("/api/prices/fetch", async (req, res) => {
+    try {
+      const { productName, brand, retailers } = req.body;
+      
+      if (!productName) {
+        return res.status(400).json({ error: "productName is required" });
+      }
+
+      const prices = await fetchProductPrices(productName, brand, retailers);
+      res.json({ success: true, prices });
+    } catch (error) {
+      console.error("Price fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch prices" });
+    }
+  });
+
+  app.post("/api/prices/refresh", async (req, res) => {
+    try {
+      const { productName, brand } = req.body;
+      
+      if (!productName) {
+        return res.status(400).json({ error: "productName is required" });
+      }
+
+      const triggered = await triggerBackgroundRefresh(productName, brand);
+      res.json({ 
+        success: triggered,
+        message: triggered ? "Background refresh triggered" : "Failed to trigger refresh"
+      });
+    } catch (error) {
+      console.error("Price refresh error:", error);
+      res.status(500).json({ error: "Failed to trigger refresh" });
+    }
+  });
+
+  app.get("/api/prices/health", async (req, res) => {
+    try {
+      const isHealthy = await checkPythonFetcherHealth();
+      res.json({ 
+        pythonFetcher: isHealthy ? "healthy" : "unavailable",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.json({ pythonFetcher: "error", error: String(error) });
     }
   });
 
