@@ -1,8 +1,19 @@
 import { db } from "../db";
 import { products, productOffers, priceHistory, retailers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 const PYTHON_FETCHER_URL = process.env.PYTHON_FETCHER_URL || "http://localhost:8000";
+
+const RETAILER_SLUG_MAP: Record<string, string> = {
+  "nykaa": "Nykaa",
+  "amazon_in": "Amazon India",
+  "amazon_us": "Amazon",
+  "sephora": "Sephora",
+  "sephora_in": "Sephora India",
+  "ulta": "Ulta Beauty",
+  "myntra": "Myntra",
+  "purplle": "Purplle"
+};
 
 interface FetchedPrice {
   retailer: string;
@@ -40,7 +51,7 @@ interface FetchResponse {
 export async function fetchProductPrices(
   productName: string,
   brand?: string,
-  retailers: string[] = ["nykaa", "amazon_in", "amazon_us", "sephora"]
+  retailerSlugs: string[] = ["nykaa", "amazon_in", "amazon_us", "sephora"]
 ): Promise<FetchedPrice[]> {
   try {
     const response = await fetch(`${PYTHON_FETCHER_URL}/fetch`, {
@@ -49,7 +60,7 @@ export async function fetchProductPrices(
       body: JSON.stringify({
         product_name: productName,
         brand: brand || null,
-        retailers: retailers,
+        retailers: retailerSlugs,
         verify_images: true
       })
     });
@@ -101,30 +112,61 @@ export async function updateProductPricesFromFetch(productId: number): Promise<v
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) return;
 
-  const fetchedPrices = await fetchProductPrices(product.name, product.brand || undefined);
+  const country = product.country || "US";
+  const retailerSlugs = country === "IN" 
+    ? ["nykaa", "amazon_in", "purplle", "myntra"]
+    : ["amazon_us", "sephora", "ulta"];
+
+  const fetchedPrices = await fetchProductPrices(
+    product.name, 
+    product.brand || undefined,
+    retailerSlugs
+  );
+
+  const allRetailers = await db.select().from(retailers);
 
   for (const fetched of fetchedPrices) {
-    const retailerName = fetched.retailer.replace('_', ' ').replace('in', 'India').replace('us', '');
-    
-    const existingRetailers = await db.select().from(retailers);
-    const matchedRetailer = existingRetailers.find(r => 
-      r.name.toLowerCase().includes(fetched.retailer.split('_')[0])
-    );
+    if (fetched.price <= 0) continue;
 
-    if (matchedRetailer && fetched.price > 0) {
-      const [existingOffer] = await db.select()
-        .from(productOffers)
-        .where(eq(productOffers.productId, productId));
+    const retailerName = RETAILER_SLUG_MAP[fetched.retailer];
+    if (!retailerName) continue;
 
-      if (existingOffer) {
-        await db.insert(priceHistory).values({
-          productId,
-          retailerId: matchedRetailer.id,
+    const matchedRetailer = allRetailers.find(r => r.name === retailerName);
+    if (!matchedRetailer) continue;
+
+    const [existingOffer] = await db.select()
+      .from(productOffers)
+      .where(and(
+        eq(productOffers.productId, productId),
+        eq(productOffers.retailerId, matchedRetailer.id)
+      ));
+
+    const affiliateUrl = fetched.productUrl || `https://${retailerName.toLowerCase().replace(' ', '')}.com`;
+    const currency = fetched.currency as "INR" | "USD";
+
+    if (existingOffer) {
+      await db.update(productOffers)
+        .set({
           price: fetched.price,
-          currency: fetched.currency as "INR" | "USD"
-        });
-      }
+          affiliateUrl: fetched.productUrl || existingOffer.affiliateUrl
+        })
+        .where(eq(productOffers.id, existingOffer.id));
+    } else {
+      await db.insert(productOffers).values({
+        productId,
+        retailerId: matchedRetailer.id,
+        price: fetched.price,
+        currency,
+        affiliateUrl
+      });
     }
+
+    await db.insert(priceHistory).values({
+      productId,
+      retailerId: matchedRetailer.id,
+      price: fetched.price,
+      currency
+    });
   }
 }
 

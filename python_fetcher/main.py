@@ -98,8 +98,13 @@ async def fetch_product(
     if not force_refresh:
         cached = get_cached_data(cache_key)
         if cached:
-            cached.cache_hit = True
-            return cached
+            response = FetchResponse(
+                product_name=cached.product_name,
+                results=cached.results,
+                cache_hit=True,
+                fetch_duration_ms=cached.fetch_duration_ms
+            )
+            return response
     
     result = await fetch_all_retailers(request)
     set_cached_data(cache_key, result)

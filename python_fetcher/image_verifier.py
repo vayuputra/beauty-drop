@@ -74,37 +74,43 @@ REASON: [brief explanation]"""
         )
         
         result_text = response.choices[0].message.content or ""
+        result_lower = result_text.lower()
         
-        is_valid = "MATCH: yes" in result_text.lower() or "match: yes" in result_text
+        is_valid = False
+        if "match: yes" in result_lower or "match:yes" in result_lower:
+            is_valid = True
+        elif "match: no" in result_lower or "match:no" in result_lower:
+            is_valid = False
         
         confidence = 50.0
-        if "CONFIDENCE:" in result_text:
+        if "confidence:" in result_lower:
             try:
-                conf_line = [l for l in result_text.split('\n') if 'CONFIDENCE:' in l][0]
-                confidence = float(conf_line.split(':')[1].strip().replace('%', ''))
+                conf_line = [l for l in result_text.split('\n') if 'confidence:' in l.lower()][0]
+                conf_value = conf_line.lower().split('confidence:')[1].strip().replace('%', '').split()[0]
+                confidence = float(conf_value)
             except:
                 pass
         
         detected_product = None
-        if "DETECTED_PRODUCT:" in result_text:
+        if "detected_product:" in result_lower:
             try:
-                prod_line = [l for l in result_text.split('\n') if 'DETECTED_PRODUCT:' in l][0]
+                prod_line = [l for l in result_text.split('\n') if 'detected_product:' in l.lower()][0]
                 detected_product = prod_line.split(':', 1)[1].strip()
             except:
                 pass
         
         detected_brand = None
-        if "DETECTED_BRAND:" in result_text:
+        if "detected_brand:" in result_lower:
             try:
-                brand_line = [l for l in result_text.split('\n') if 'DETECTED_BRAND:' in l][0]
+                brand_line = [l for l in result_text.split('\n') if 'detected_brand:' in l.lower()][0]
                 detected_brand = brand_line.split(':', 1)[1].strip()
             except:
                 pass
         
         reason = None
-        if "REASON:" in result_text:
+        if "reason:" in result_lower:
             try:
-                reason_line = [l for l in result_text.split('\n') if 'REASON:' in l][0]
+                reason_line = [l for l in result_text.split('\n') if 'reason:' in l.lower()][0]
                 reason = reason_line.split(':', 1)[1].strip()
             except:
                 pass
@@ -120,7 +126,7 @@ REASON: [brief explanation]"""
     except Exception as e:
         print(f"Image verification error: {e}")
         return ImageVerificationResult(
-            is_valid=True,
+            is_valid=False,
             confidence=0.0,
             reason=f"Verification failed: {str(e)}"
         )

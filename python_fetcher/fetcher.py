@@ -183,19 +183,29 @@ async def fetch_product_data(
             result.image_url = image_result.get("thumbnail")
             result.product_url = image_result.get("link")
     
-    if not result.image_url or not result.product_url:
+    needs_scrape = (
+        not result.image_url or 
+        not result.product_url or 
+        result.price is None
+    )
+    
+    if needs_scrape:
         scrape_result = await search_and_scrape(product_name, retailer)
         if not scrape_result.get("error"):
-            result.source = "scraper"
-            if scrape_result.get("image_url"):
+            if result.source == "none":
+                result.source = "scraper"
+            else:
+                result.source = f"{result.source}+scraper"
+            
+            if not result.image_url and scrape_result.get("image_url"):
                 result.image_url = scrape_result["image_url"]
-            if scrape_result.get("product_url"):
+            if not result.product_url and scrape_result.get("product_url"):
                 result.product_url = scrape_result["product_url"]
-            if scrape_result.get("price"):
+            if result.price is None and scrape_result.get("price"):
                 price_data = create_price_data(scrape_result["price"])
                 if price_data:
                     result.price = price_data
-            if scrape_result.get("availability"):
+            if result.availability == Availability.UNKNOWN and scrape_result.get("availability"):
                 result.availability = scrape_result["availability"]
     
     if verify_image and result.image_url:
