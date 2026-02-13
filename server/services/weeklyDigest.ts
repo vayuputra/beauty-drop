@@ -59,7 +59,7 @@ export async function generateWeeklyDigest(country?: string): Promise<WeeklyDige
       .from(influencerMentions)
       .where(and(
         eq(influencerMentions.productId, product.id),
-        gte(influencerMentions.mentionedAt, weekAgo)
+        gte(influencerMentions.discoveredAt, weekAgo)
       ));
     
     if (mentions.length >= 3) {

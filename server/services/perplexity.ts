@@ -1,16 +1,16 @@
 function extractYouTubeVideoId(url: string): string | null {
   if (!url) return null;
-  
+
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
     /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
   ];
-  
+
   for (const pattern of patterns) {
     const match = url.match(pattern);
     if (match) return match[1];
   }
-  
+
   return null;
 }
 
@@ -105,7 +105,7 @@ Only return the JSON array, no other text.`;
 
     const data: PerplexityResponse = await response.json();
     const content = data.choices[0]?.message?.content || "[]";
-    
+
     // Parse the JSON response, handling potential formatting issues
     let jsonStr = content.trim();
     if (jsonStr.startsWith("```json")) {
@@ -120,12 +120,12 @@ Only return the JSON array, no other text.`;
     jsonStr = jsonStr.trim();
 
     const influencers: InfluencerInfo[] = JSON.parse(jsonStr);
-    
+
     // Add embed URLs for YouTube videos
     return influencers.map(inf => {
       let embedUrl = inf.embedUrl;
       let thumbnailUrl = inf.thumbnailUrl;
-      
+
       if (inf.platform === 'youtube' && inf.videoUrl) {
         const videoId = extractYouTubeVideoId(inf.videoUrl);
         if (videoId) {
@@ -133,7 +133,7 @@ Only return the JSON array, no other text.`;
           thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
         }
       }
-      
+
       return {
         ...inf,
         embedUrl,
@@ -228,6 +228,31 @@ const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
   'dot & key compact powder spf 15': {
     url: 'https://m.media-amazon.com/images/I/51e6gL1aJYL._SL1200_.jpg',
     source: 'Amazon'
+  },
+  // Indian Market additions
+  'mamaearth ubtan face wash': {
+    url: 'https://images.amazon.com/images/P/B093HB4HVR.01.jpg',
+    source: 'Amazon India'
+  },
+  'maybelline fit me foundation': {
+    url: 'https://images-static.nykaa.com/media/catalog/product/a/9/a9e9d6aNYKAC00003439_1.jpg',
+    source: 'Nykaa'
+  },
+  'lakme absolute blur perfect primer': {
+    url: 'https://m.media-amazon.com/images/I/51wXkYtVzKL._SL1000_.jpg',
+    source: 'Amazon India'
+  },
+  'nykaa so matte lipstick': {
+    url: 'https://images-static.nykaa.com/media/catalog/product/5/3/5391500003920_1_1.jpg',
+    source: 'Nykaa'
+  },
+  'neutrogena hydro boost water gel': {
+    url: 'https://m.media-amazon.com/images/I/518+d3F+GqL._SL1000_.jpg',
+    source: 'Amazon India'
+  },
+  'cetaphil gentle skin cleanser': {
+    url: 'https://m.media-amazon.com/images/I/61+y+.L._SL1500_.jpg',
+    source: 'Amazon India'
   }
 };
 
@@ -264,14 +289,14 @@ export async function searchProductImage(
   }
 
   const prompt = `Find the official product image URL for "${productName}" by ${brand}.
-
+ 
 I need the direct URL to the actual product photo (the real product packaging/bottle/tube image, NOT a stock photo).
-
+ 
 Search for the image on:
 1. The official ${brand} website
-2. Major retailers like Sephora, Ulta, Amazon, Nykaa
+2. Major retailers like Sephora, Ulta, Amazon (especially Amazon.in for India), Nykaa, Myntra
 3. The brand's official product pages
-
+ 
 Return ONLY a JSON object with:
 {
   "imageUrl": "direct URL to the product image (must be a .jpg, .png, or .webp file, or a CDN image URL)",
@@ -319,7 +344,7 @@ Return ONLY the JSON object, no other text.`;
 
     const data: PerplexityResponse = await response.json();
     const content = data.choices[0]?.message?.content || "{}";
-    
+
     let jsonStr = content.trim();
     if (jsonStr.startsWith("```json")) {
       jsonStr = jsonStr.slice(7);
@@ -333,7 +358,7 @@ Return ONLY the JSON object, no other text.`;
     jsonStr = jsonStr.trim();
 
     const result = JSON.parse(jsonStr);
-    
+
     if (result.imageUrl && typeof result.imageUrl === 'string' && result.imageUrl.startsWith('http')) {
       console.log(`Found product image for ${brand} ${productName}: ${result.imageUrl}`);
       return {
@@ -341,7 +366,7 @@ Return ONLY the JSON object, no other text.`;
         source: result.source || 'Web Search'
       };
     }
-    
+
     console.log(`No valid image found for ${brand} ${productName}, using fallback`);
     const imageUrl = getReliableImageForCategory(category || 'Skincare');
     return { officialImageUrl: imageUrl, source: 'Unsplash' };

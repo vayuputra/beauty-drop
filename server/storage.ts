@@ -7,7 +7,7 @@ import {
   type ProductTrustScore, type InsertTrustScore, type ProductReviewSummary, type InsertReviewSummary,
   type PriceTracker, type InsertPriceTracker, type PriceHistory, type InsertPriceHistory
 } from "@shared/schema";
-import { eq, gt, desc, and, sql } from "drizzle-orm";
+import { eq, gt, desc, and, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // User
@@ -94,25 +94,37 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .where(eq(products.country, country))
       .orderBy(desc(products.influencerCount), desc(products.lastInfluencerRefresh));
-    
-    // Get price ranges for each product
-    const productsWithPrices = await Promise.all(
-      productList.map(async (product) => {
-        const offers = await db.select().from(productOffers).where(eq(productOffers.productId, product.id));
-        if (offers.length === 0) {
-          return { ...product, minPrice: null, maxPrice: null, currency: null };
-        }
-        const prices = offers.map(o => o.price);
-        return {
-          ...product,
-          minPrice: Math.min(...prices),
-          maxPrice: Math.max(...prices),
-          currency: offers[0].currency
-        };
-      })
-    );
-    
-    return productsWithPrices;
+
+    if (productList.length === 0) return [];
+
+    // Fetch all offers for these products in a single query instead of N+1
+    const productIds = productList.map(p => p.id);
+    const allOffers = await db
+      .select()
+      .from(productOffers)
+      .where(inArray(productOffers.productId, productIds));
+
+    // Group offers by product ID
+    const offersByProductId = new Map<number, typeof allOffers>();
+    for (const offer of allOffers) {
+      const existing = offersByProductId.get(offer.productId) || [];
+      existing.push(offer);
+      offersByProductId.set(offer.productId, existing);
+    }
+
+    return productList.map((product) => {
+      const offers = offersByProductId.get(product.id) || [];
+      if (offers.length === 0) {
+        return { ...product, minPrice: null, maxPrice: null, currency: null };
+      }
+      const prices = offers.map(o => o.price);
+      return {
+        ...product,
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        currency: offers[0].currency,
+      };
+    });
   }
 
   async getProduct(id: number): Promise<ProductWithDetails | undefined> {

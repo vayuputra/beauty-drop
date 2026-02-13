@@ -3,7 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth } from "./replit_integrations/auth";
+import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory } from "@shared/schema";
@@ -105,7 +105,7 @@ export async function registerRoutes(
   });
 
   // Refresh Trending - Discover influencers for a specific product
-  app.post("/api/products/:id/refresh-influencers", async (req, res) => {
+  app.post("/api/products/:id/refresh-influencers", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -177,7 +177,7 @@ export async function registerRoutes(
   });
 
   // Refresh product image from official sources
-  app.post("/api/products/:id/refresh-image", async (req, res) => {
+  app.post("/api/products/:id/refresh-image", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -213,7 +213,7 @@ export async function registerRoutes(
   });
 
   // Refresh prices for a product from Python fetcher or simulate price update
-  app.post("/api/products/:id/refresh-prices", async (req, res) => {
+  app.post("/api/products/:id/refresh-prices", isAuthenticated, async (req, res) => {
     // Rate limiting: only allow price refresh if last update was more than 5 minutes ago
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
@@ -311,7 +311,7 @@ export async function registerRoutes(
   });
 
   // Refresh all data for a product (influencers + image)
-  app.post("/api/products/:id/refresh-all", async (req, res) => {
+  app.post("/api/products/:id/refresh-all", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -371,7 +371,7 @@ export async function registerRoutes(
   });
 
   // Refresh all products (batch operation)
-  app.post("/api/refresh-trending", async (req, res) => {
+  app.post("/api/refresh-trending", isAuthenticated, async (req, res) => {
     try {
       const allProducts = await storage.getAllProducts();
       const results: { productId: number; name: string; status: string }[] = [];
@@ -424,7 +424,7 @@ export async function registerRoutes(
   });
 
   // Batch refresh all product images
-  app.post("/api/refresh-images", async (req, res) => {
+  app.post("/api/refresh-images", isAuthenticated, async (req, res) => {
     try {
       const allProducts = await storage.getAllProducts();
       const results: { productId: number; name: string; status: string; imageUrl?: string }[] = [];
@@ -547,7 +547,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Invalid URL' });
       }
 
-      const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
+      const isAllowed = allowedDomains.some(domain =>
+        urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
+      );
       if (!isAllowed) {
         return res.status(403).json({ error: 'Domain not allowed' });
       }
@@ -597,7 +599,7 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/products/:id/calculate-trust-score", async (req, res) => {
+  app.post("/api/products/:id/calculate-trust-score", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -634,7 +636,7 @@ export async function registerRoutes(
     res.json({ exists: true, ...summary });
   });
 
-  app.post("/api/products/:id/generate-review-summary", async (req, res) => {
+  app.post("/api/products/:id/generate-review-summary", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -670,9 +672,16 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userId = (req.user as any).claims?.sub;
     if (!userId) return res.sendStatus(401);
-    
+
     const productId = Number(req.params.id);
-    const { targetPrice, notifyOnAnyDrop } = req.body;
+    const priceTrackerInput = z.object({
+      targetPrice: z.number().positive().nullable().optional(),
+      notifyOnAnyDrop: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!priceTrackerInput.success) {
+      return res.status(400).json({ error: priceTrackerInput.error.errors[0].message });
+    }
+    const { targetPrice, notifyOnAnyDrop } = priceTrackerInput.data;
     
     const existing = await storage.getPriceTracker(userId, productId);
     if (existing) {
@@ -694,8 +703,16 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userId = (req.user as any).claims?.sub;
     if (!userId) return res.sendStatus(401);
-    
-    await storage.deletePriceTracker(Number(req.params.id));
+
+    // Verify the tracker belongs to the requesting user
+    const trackerId = Number(req.params.id);
+    const userTrackers = await storage.getUserPriceTrackers(userId);
+    const ownsTracker = userTrackers.some(t => t.id === trackerId);
+    if (!ownsTracker) {
+      return res.status(403).json({ error: "Not authorized to delete this tracker" });
+    }
+
+    await storage.deletePriceTracker(trackerId);
     res.json({ success: true });
   });
 
@@ -707,7 +724,7 @@ export async function registerRoutes(
   });
 
   // Image Verification Route
-  app.post("/api/products/:id/verify-image", async (req, res) => {
+  app.post("/api/products/:id/verify-image", isAuthenticated, async (req, res) => {
     const productId = Number(req.params.id);
     const product = await storage.getProduct(productId);
     
@@ -799,7 +816,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/weekly-digest/generate", async (req, res) => {
+  app.post("/api/weekly-digest/generate", isAuthenticated, async (req, res) => {
     try {
       const country = req.body.country as string | undefined;
       const digest = await saveWeeklyDigest(country);
@@ -811,13 +828,17 @@ export async function registerRoutes(
   });
 
   // Price Fetcher Integration Routes (Python Service)
-  app.post("/api/prices/fetch", async (req, res) => {
+  app.post("/api/prices/fetch", isAuthenticated, async (req, res) => {
     try {
-      const { productName, brand, retailers } = req.body;
-      
-      if (!productName) {
-        return res.status(400).json({ error: "productName is required" });
+      const priceFetchInput = z.object({
+        productName: z.string().min(1, "productName is required"),
+        brand: z.string().optional(),
+        retailers: z.array(z.string()).optional(),
+      }).safeParse(req.body);
+      if (!priceFetchInput.success) {
+        return res.status(400).json({ error: priceFetchInput.error.errors[0].message });
       }
+      const { productName, brand, retailers } = priceFetchInput.data;
 
       const prices = await fetchProductPrices(productName, brand, retailers);
       res.json({ success: true, prices });
@@ -827,13 +848,16 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/prices/refresh", async (req, res) => {
+  app.post("/api/prices/refresh", isAuthenticated, async (req, res) => {
     try {
-      const { productName, brand } = req.body;
-      
-      if (!productName) {
-        return res.status(400).json({ error: "productName is required" });
+      const priceRefreshInput = z.object({
+        productName: z.string().min(1, "productName is required"),
+        brand: z.string().optional(),
+      }).safeParse(req.body);
+      if (!priceRefreshInput.success) {
+        return res.status(400).json({ error: priceRefreshInput.error.errors[0].message });
       }
+      const { productName, brand } = priceRefreshInput.data;
 
       const triggered = await triggerBackgroundRefresh(productName, brand);
       res.json({ 
@@ -858,8 +882,10 @@ export async function registerRoutes(
     }
   });
 
-  // Seed Data function
-  await seedDatabase();
+  // Seed Data — only auto-seed in development. Use `npm run db:seed` for production.
+  if (process.env.NODE_ENV !== "production") {
+    await seedDatabase();
+  }
 
   return httpServer;
 }

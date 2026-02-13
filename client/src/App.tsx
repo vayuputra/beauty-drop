@@ -3,6 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import NotFound from "@/pages/not-found";
 
 // Pages
@@ -11,6 +12,7 @@ import Home from "@/pages/Home";
 import Onboarding from "@/pages/Onboarding";
 import ProductDetails from "@/pages/ProductDetails";
 import Settings from "@/pages/Settings";
+import SearchPage from "@/pages/Search";
 
 function Router() {
   return (
@@ -19,6 +21,7 @@ function Router() {
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/" component={Home} />
       <Route path="/product/:id" component={ProductDetails} />
+      <Route path="/search" component={SearchPage} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
@@ -27,12 +30,14 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
