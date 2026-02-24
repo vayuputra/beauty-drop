@@ -159,6 +159,14 @@ export const imageVerifications = pgTable("image_verifications", {
   verifiedAt: timestamp("verified_at").defaultNow(),
 });
 
+// User favorites / wishlist
+export const favorites = pgTable("favorites", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const productRelations = relations(products, ({ one, many }) => ({
   offers: many(productOffers),
@@ -229,6 +237,17 @@ export const videoRelations = relations(productVideos, ({ one }) => ({
   }),
 }));
 
+export const favoriteRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+  product: one(products, {
+    fields: [favorites.productId],
+    references: [products.id],
+  }),
+}));
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   country: true,
@@ -258,6 +277,7 @@ export type PriceTracker = typeof priceTrackers.$inferSelect;
 export type PriceHistory = typeof priceHistory.$inferSelect;
 export type WeeklyDigest = typeof weeklyDigests.$inferSelect;
 export type ImageVerification = typeof imageVerifications.$inferSelect;
+export type Favorite = typeof favorites.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;

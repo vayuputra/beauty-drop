@@ -115,7 +115,19 @@ Only return the JSON, no other text.`;
     if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
     jsonStr = jsonStr.trim();
 
-    const result = JSON.parse(jsonStr);
+    let result: any;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error("Failed to parse Reddit sentiment response:", parseError, "Raw:", jsonStr.substring(0, 200));
+      return {
+        overallSentiment: 50,
+        mentionCount: 0,
+        sources: [],
+        positiveKeywords: [],
+        negativeKeywords: []
+      };
+    }
     return {
       overallSentiment: Math.min(100, Math.max(0, result.overallSentiment || 50)),
       mentionCount: result.mentionCount || 0,

@@ -1,7 +1,7 @@
-import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2 } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,10 @@ export default function ProductDetails() {
   const { data: priceTrackers } = usePriceTrackers();
   const createPriceTracker = useCreatePriceTracker();
   const refreshPrices = useRefreshPrices();
+  const { data: discussionsData } = useDiscussions(id);
+  const { data: favoriteIds } = useFavoriteIds();
+  const toggleFavorite = useToggleFavorite();
+  const isFavorited = favoriteIds?.includes(id) ?? false;
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -110,16 +114,25 @@ export default function ProductDetails() {
           <ArrowLeft size={20} />
         </Link>
         
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleRefreshImage}
-          disabled={refreshImage.isPending}
-          data-testid="button-refresh-image"
-          className="absolute top-12 right-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
-        >
-          <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
-        </Button>
+        <div className="absolute top-12 right-6 z-20 flex gap-2">
+          <button
+            onClick={() => toggleFavorite.mutate({ productId: product.id, isFavorited })}
+            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
+            aria-label={isFavorited ? "Remove from wishlist" : "Add to wishlist"}
+          >
+            <Heart size={18} className={isFavorited ? "text-red-500 fill-red-500" : "text-foreground"} />
+          </button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefreshImage}
+            disabled={refreshImage.isPending}
+            data-testid="button-refresh-image"
+            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
+          >
+            <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
+          </Button>
+        </div>
         
         <img 
           src={imageUrl} 
@@ -365,6 +378,44 @@ export default function ProductDetails() {
           )}
         </motion.div>
 
+        {/* Community Discussions Section */}
+        {discussionsData?.exists && discussionsData.discussions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <SiReddit size={18} className="text-orange-500" />
+              <h3 className="font-display text-xl font-bold">Community Discussions</h3>
+              {discussionsData.mentionCount > 0 && (
+                <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {discussionsData.mentionCount} mentions
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {discussionsData.discussions.slice(0, 5).map((discussion: any, index: number) => (
+                <div
+                  key={index}
+                  className="bg-white dark:bg-card rounded-xl border border-border p-3 flex items-start gap-3 cursor-pointer hover:border-orange-300 transition-colors"
+                  onClick={() => discussion.url && window.open(discussion.url, '_blank')}
+                >
+                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <SiReddit size={16} className="text-orange-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground line-clamp-2">{discussion.title}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Reddit</p>
+                  </div>
+                  {discussion.url && <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Price Tracker Section */}
         {user && (
           <motion.div
@@ -460,7 +511,9 @@ export default function ProductDetails() {
                   
                   <div className="flex items-center gap-4">
                     <span className="font-bold text-lg">
-                      {offer.currency === 'USD' ? '$' : '₹'}{offer.price}
+                      {offer.currency === 'USD'
+                        ? `$${Number(offer.price).toFixed(2)}`
+                        : `₹${Number(offer.price).toLocaleString('en-IN')}`}
                     </span>
                     <button
                       onClick={() => handleOfferClick(offer)}

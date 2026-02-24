@@ -19,6 +19,22 @@ export function useDrops(country?: string) {
   });
 }
 
+// Server-side search for products
+export function useSearchProducts(query: string, country?: string) {
+  return useQuery({
+    queryKey: ['/api/search', query, country],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('q', query);
+      if (country) params.set('country', country);
+      const res = await fetch(`/api/search?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to search products");
+      return await res.json();
+    },
+    enabled: query.trim().length >= 2,
+  });
+}
+
 // Get single product details
 export function useProduct(id: number) {
   return useQuery({
@@ -295,5 +311,62 @@ export function usePriceHistory(productId: number) {
       return await res.json();
     },
     enabled: !!productId,
+  });
+}
+
+// Discussions hook
+export function useDiscussions(productId: number) {
+  return useQuery({
+    queryKey: ['/api/products', productId, 'discussions'],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${productId}/discussions`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch discussions");
+      return await res.json();
+    },
+    enabled: !!productId,
+  });
+}
+
+// Favorites hooks
+export function useFavoriteIds() {
+  return useQuery({
+    queryKey: ['/api/favorites/ids'],
+    queryFn: async () => {
+      const res = await fetch('/api/favorites/ids', { credentials: "include" });
+      if (!res.ok) return [] as number[];
+      return await res.json() as number[];
+    },
+  });
+}
+
+export function useFavorites() {
+  return useQuery({
+    queryKey: ['/api/favorites'],
+    queryFn: async () => {
+      const res = await fetch('/api/favorites', { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch favorites");
+      return await res.json();
+    },
+  });
+}
+
+export function useToggleFavorite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ productId, isFavorited }: { productId: number; isFavorited: boolean }) => {
+      const res = await fetch(`/api/products/${productId}/favorite`, {
+        method: isFavorited ? "DELETE" : "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to toggle favorite");
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/favorites/ids'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/favorites'] });
+    },
   });
 }

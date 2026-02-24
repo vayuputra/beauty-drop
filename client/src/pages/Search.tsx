@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useUser } from "@/hooks/use-user";
-import { useDrops } from "@/hooks/use-drops";
+import { useSearchProducts, useDrops } from "@/hooks/use-drops";
 import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
-import { Search as SearchIcon } from "lucide-react";
+import { Search as SearchIcon, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 export default function SearchPage() {
@@ -12,20 +12,12 @@ export default function SearchPage() {
   const [query, setQuery] = useState("");
 
   const country = user?.country || "US";
-  const { data: products, isLoading } = useDrops(country);
+  const { data: searchResults, isLoading: searchLoading } = useSearchProducts(query, country);
+  const { data: trendingProducts, isLoading: trendingLoading } = useDrops(country);
 
-  const filtered = useMemo(() => {
-    if (!products || !query.trim()) return products || [];
-    const q = query.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.brand.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q)
-    );
-  }, [products, query]);
-
-  if (isLoading) return <Loader />;
+  const isSearching = query.trim().length >= 2;
+  const results = isSearching ? searchResults : null;
+  const isLoading = isSearching ? searchLoading : trendingLoading;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -43,16 +35,33 @@ export default function SearchPage() {
       </div>
 
       <div className="px-4 py-4">
-        {query.trim() && filtered.length === 0 ? (
+        {isLoading ? (
+          <Loader />
+        ) : isSearching && results && results.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <SearchIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">No products found for "{query}"</p>
           </div>
+        ) : isSearching && results ? (
+          <div>
+            <p className="text-sm text-muted-foreground mb-3">{results.length} result{results.length !== 1 ? 's' : ''} for "{query}"</p>
+            <div className="grid grid-cols-2 gap-3">
+              {results.map((product: any) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {filtered.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={16} className="text-accent" />
+              <p className="text-sm font-medium text-foreground">Trending Now</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {trendingProducts?.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
           </div>
         )}
       </div>

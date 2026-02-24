@@ -119,7 +119,18 @@ Only return the JSON array, no other text.`;
     }
     jsonStr = jsonStr.trim();
 
-    const influencers: InfluencerInfo[] = JSON.parse(jsonStr);
+    let influencers: InfluencerInfo[];
+    try {
+      influencers = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error("Failed to parse Perplexity influencer response:", parseError, "Raw:", jsonStr.substring(0, 200));
+      return [];
+    }
+
+    if (!Array.isArray(influencers)) {
+      console.error("Perplexity response is not an array:", typeof influencers);
+      return [];
+    }
 
     // Add embed URLs for YouTube videos
     return influencers.map(inf => {
@@ -357,7 +368,14 @@ Return ONLY the JSON object, no other text.`;
     }
     jsonStr = jsonStr.trim();
 
-    const result = JSON.parse(jsonStr);
+    let result: { imageUrl?: string; source?: string };
+    try {
+      result = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error("Failed to parse Perplexity image response:", parseError, "Raw:", jsonStr.substring(0, 200));
+      const imageUrl = getReliableImageForCategory(category || 'Skincare');
+      return { officialImageUrl: imageUrl, source: 'Unsplash' };
+    }
 
     if (result.imageUrl && typeof result.imageUrl === 'string' && result.imageUrl.startsWith('http')) {
       console.log(`Found product image for ${brand} ${productName}: ${result.imageUrl}`);

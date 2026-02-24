@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory } from "@shared/schema";
+import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites } from "@shared/schema";
 import { searchInfluencersForProduct, searchProductImage } from "./services/perplexity";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
@@ -14,6 +14,12 @@ import { verifyProductImage } from "./services/imageVerification";
 import { generateSmartLink } from "./services/deepLinks";
 import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
 import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
+
+function parseProductId(id: string): number | null {
+  const parsed = Number(id);
+  if (isNaN(parsed) || parsed <= 0 || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -83,8 +89,21 @@ export async function registerRoutes(
     res.json(trendingProducts);
   });
 
+  // Search products
+  app.get("/api/search", async (req, res) => {
+    const query = (req.query.q as string || '').trim();
+    if (!query || query.length < 2) {
+      return res.json([]);
+    }
+    const country = req.query.country as string | undefined;
+    const results = await storage.searchProducts(query, country);
+    res.json(results);
+  });
+
   app.get(api.products.get.path, async (req, res) => {
-    const product = await storage.getProduct(Number(req.params.id));
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+    const product = await storage.getProduct(productId);
     if (!product) return res.sendStatus(404);
     res.json(product);
   });
@@ -104,9 +123,58 @@ export async function registerRoutes(
     }
   });
 
+  // Favorites / Wishlist Routes
+  app.get("/api/favorites", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const favs = await storage.getUserFavorites(userId);
+    res.json(favs);
+  });
+
+  app.get("/api/favorites/ids", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const favs = await db.select({ productId: favorites.productId })
+      .from(favorites)
+      .where(eq(favorites.userId, userId));
+    res.json(favs.map(f => f.productId));
+  });
+
+  app.post("/api/products/:id/favorite", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    const already = await storage.isFavorite(userId, productId);
+    if (already) return res.json({ success: true, message: "Already favorited" });
+
+    await storage.addFavorite(userId, productId);
+    res.status(201).json({ success: true });
+  });
+
+  app.delete("/api/products/:id/favorite", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    await storage.removeFavorite(userId, productId);
+    res.json({ success: true });
+  });
+
   // Refresh Trending - Discover influencers for a specific product
   app.post("/api/products/:id/refresh-influencers", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -178,7 +246,8 @@ export async function registerRoutes(
 
   // Refresh product image from official sources
   app.post("/api/products/:id/refresh-image", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -214,8 +283,8 @@ export async function registerRoutes(
 
   // Refresh prices for a product from Python fetcher or simulate price update
   app.post("/api/products/:id/refresh-prices", isAuthenticated, async (req, res) => {
-    // Rate limiting: only allow price refresh if last update was more than 5 minutes ago
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -312,7 +381,8 @@ export async function registerRoutes(
 
   // Refresh all data for a product (influencers + image)
   app.post("/api/products/:id/refresh-all", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -569,7 +639,18 @@ export async function registerRoutes(
       }
 
       const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+      // Validate that the response is actually an image
+      if (!contentType.startsWith('image/')) {
+        return res.status(400).json({ error: 'URL does not point to an image' });
+      }
+
       const buffer = await response.arrayBuffer();
+
+      // Limit proxy to 10MB images to prevent memory abuse
+      if (buffer.byteLength > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Image too large' });
+      }
 
       // Set caching headers (cache for 1 day)
       res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -581,9 +662,36 @@ export async function registerRoutes(
     }
   });
 
+  // Discussions route - find Reddit/forum discussions about a product
+  app.get("/api/products/:id/discussions", async (req, res) => {
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    const product = await storage.getProduct(productId);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    // Check if we have trust score data with Reddit sources
+    const trustScore = await storage.getTrustScore(productId);
+    if (trustScore && trustScore.redditSources && (trustScore.redditSources as string[]).length > 0) {
+      return res.json({
+        exists: true,
+        discussions: (trustScore.redditSources as string[]).map((source: string) => ({
+          title: source,
+          url: source.startsWith('http') ? source : null,
+          platform: 'reddit',
+        })),
+        sentimentScore: trustScore.redditSentimentScore,
+        mentionCount: trustScore.redditMentions,
+      });
+    }
+
+    return res.json({ exists: false, discussions: [] });
+  });
+
   // Trust Score Routes
   app.get("/api/products/:id/trust-score", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const trustScore = await storage.getTrustScore(productId);
     
     if (!trustScore) {
@@ -600,7 +708,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/products/:id/calculate-trust-score", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -626,18 +735,20 @@ export async function registerRoutes(
 
   // Review Summary Routes
   app.get("/api/products/:id/review-summary", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const summary = await storage.getReviewSummary(productId);
-    
+
     if (!summary) {
       return res.json({ exists: false, message: "No review summary generated yet" });
     }
-    
+
     res.json({ exists: true, ...summary });
   });
 
   app.post("/api/products/:id/generate-review-summary", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -673,7 +784,8 @@ export async function registerRoutes(
     const userId = (req.user as any).claims?.sub;
     if (!userId) return res.sendStatus(401);
 
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const priceTrackerInput = z.object({
       targetPrice: z.number().positive().nullable().optional(),
       notifyOnAnyDrop: z.boolean().optional(),
@@ -705,7 +817,8 @@ export async function registerRoutes(
     if (!userId) return res.sendStatus(401);
 
     // Verify the tracker belongs to the requesting user
-    const trackerId = Number(req.params.id);
+    const trackerId = parseProductId(req.params.id);
+    if (!trackerId) return res.status(400).json({ error: "Invalid tracker ID" });
     const userTrackers = await storage.getUserPriceTrackers(userId);
     const ownsTracker = userTrackers.some(t => t.id === trackerId);
     if (!ownsTracker) {
@@ -717,7 +830,8 @@ export async function registerRoutes(
   });
 
   app.get("/api/products/:id/price-history", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const limit = Number(req.query.limit) || 30;
     const history = await storage.getPriceHistory(productId, limit);
     res.json(history);
@@ -725,7 +839,8 @@ export async function registerRoutes(
 
   // Image Verification Route
   app.post("/api/products/:id/verify-image", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -751,9 +866,25 @@ export async function registerRoutes(
   // Smart Deep Link Route
   app.get("/api/smart-link", async (req, res) => {
     const { retailer, url } = req.query;
-    
+
     if (!retailer || !url) {
       return res.status(400).json({ error: "Missing retailer or url parameter" });
+    }
+
+    // Validate URL to prevent injection attacks
+    try {
+      const parsed = new URL(url as string);
+      const allowedHosts = [
+        'www.sephora.com', 'www.ulta.com', 'www.amazon.com', 'www.amazon.in',
+        'www.nykaa.com', 'www.purplle.com', 'www.myntra.com', 'www.tatacliq.com',
+        'www.sephora.in', 'sephora.com', 'ulta.com', 'amazon.com', 'amazon.in',
+        'nykaa.com', 'purplle.com', 'myntra.com', 'tatacliq.com', 'sephora.in'
+      ];
+      if (!allowedHosts.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))) {
+        return res.status(400).json({ error: "URL domain not allowed" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid URL" });
     }
 
     const userAgent = req.headers['user-agent'] || '';
@@ -762,7 +893,7 @@ export async function registerRoutes(
       url as string,
       userAgent
     );
-    
+
     res.json({ smartLink });
   });
 

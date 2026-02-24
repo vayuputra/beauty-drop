@@ -13,6 +13,7 @@ import Onboarding from "@/pages/Onboarding";
 import ProductDetails from "@/pages/ProductDetails";
 import Settings from "@/pages/Settings";
 import SearchPage from "@/pages/Search";
+import WishlistPage from "@/pages/Wishlist";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/product/:id" component={ProductDetails} />
       <Route path="/search" component={SearchPage} />
+      <Route path="/wishlist" component={WishlistPage} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

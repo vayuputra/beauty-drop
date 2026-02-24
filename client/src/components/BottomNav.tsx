@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Search, User, Sparkles } from "lucide-react";
+import { Home, Search, Heart, User } from "lucide-react";
 import { clsx } from "clsx";
 
 export function BottomNav() {
@@ -13,8 +13,8 @@ export function BottomNav() {
           "flex flex-col items-center justify-center py-3 px-2 cursor-pointer transition-all duration-300",
           isActive ? "text-accent" : "text-muted-foreground hover:text-foreground"
         )}>
-          <Icon 
-            size={24} 
+          <Icon
+            size={24}
             strokeWidth={isActive ? 2.5 : 2}
             className={clsx("mb-1 transition-transform", isActive && "scale-110")}
           />
@@ -29,6 +29,7 @@ export function BottomNav() {
       <div className="flex justify-around items-center max-w-md mx-auto">
         <NavItem href="/" icon={Home} label="Drops" />
         <NavItem href="/search" icon={Search} label="Discover" />
+        <NavItem href="/wishlist" icon={Heart} label="Wishlist" />
         <NavItem href="/settings" icon={User} label="Profile" />
       </div>
     </nav>

@@ -4,13 +4,13 @@ import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { clsx } from "clsx";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-const FILTERS = ["All", "Trending", "New", "Skincare", "Makeup"];
+const FILTERS = ["All", "Trending", "Skincare", "Makeup", "Body", "Nails"];
 
 export default function Home() {
   const { data: user, isLoading: userLoading } = useUser();
@@ -29,6 +29,19 @@ export default function Home() {
 
   // Fetch drops based on user country preference
   const { data: products, isLoading: productsLoading, refetch } = useDrops(user?.country || undefined);
+
+  // Apply client-side filtering based on selected filter chip
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    if (activeFilter === "All") return products;
+    if (activeFilter === "Trending") {
+      return [...products].sort((a, b) => (b.influencerCount ?? 0) - (a.influencerCount ?? 0));
+    }
+    // Filter by category (Skincare, Makeup, Body, Nails, etc.)
+    return products.filter(
+      (p) => p.category.toLowerCase() === activeFilter.toLowerCase()
+    );
+  }, [products, activeFilter]);
 
   const handleRefreshTrending = async () => {
     try {
@@ -111,10 +124,16 @@ export default function Home() {
       <main className="max-w-md mx-auto px-6 mt-4 space-y-8">
         {productsLoading ? (
           <Loader />
-        ) : products && products.length > 0 ? (
-          products.map((product) => (
+        ) : filteredProducts.length > 0 ? (
+          filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))
+        ) : products && products.length > 0 ? (
+          <div className="text-center py-16 px-4">
+            <p className="text-muted-foreground text-sm">
+              No {activeFilter.toLowerCase()} products found. Try a different filter.
+            </p>
+          </div>
         ) : (
           <div className="text-center py-16 px-4">
             <div className="mb-6">
