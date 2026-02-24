@@ -1,12 +1,12 @@
 import { useUser } from "@/hooks/use-user";
-import { useDrops, useRefreshTrending } from "@/hooks/use-drops";
+import { useDrops, useRefreshTrending, useUnreadNotificationCount } from "@/hooks/use-drops";
 import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useState, useEffect, useMemo } from "react";
 import { clsx } from "clsx";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,6 +17,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const [activeFilter, setActiveFilter] = useState("All");
   const refreshTrending = useRefreshTrending();
+  const { data: unreadData } = useUnreadNotificationCount();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function Home() {
               Curated for {user.country === 'IN' ? '🇮🇳 India' : '🇺🇸 USA'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -91,6 +92,14 @@ export default function Home() {
               )}
               {refreshTrending.isPending ? 'Refreshing...' : 'Refresh'}
             </Button>
+            <Link href="/notifications" className="relative h-10 w-10 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors">
+              <Bell size={18} />
+              {(unreadData?.count || 0) > 0 && (
+                <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {unreadData.count > 9 ? '9+' : unreadData.count}
+                </span>
+              )}
+            </Link>
             <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold overflow-hidden">
               {user.profileImageUrl ? (
                 <img src={user.profileImageUrl} alt="" className="w-full h-full object-cover" />

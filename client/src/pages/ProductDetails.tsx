@@ -1,7 +1,7 @@
-import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions } from "@/hooks/use-drops";
+import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export default function ProductDetails() {
   const createPriceTracker = useCreatePriceTracker();
   const refreshPrices = useRefreshPrices();
   const { data: discussionsData } = useDiscussions(id);
+  const { data: articlesData } = useArticles(id);
   const { data: favoriteIds } = useFavoriteIds();
   const toggleFavorite = useToggleFavorite();
   const isFavorited = favoriteIds?.includes(id) ?? false;
@@ -410,6 +411,49 @@ export default function ProductDetails() {
                     <p className="text-xs text-muted-foreground mt-1">Reddit</p>
                   </div>
                   {discussion.url && <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Articles Section */}
+        {articlesData?.exists && articlesData.articles?.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22 }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Newspaper size={18} className="text-blue-500" />
+              <h3 className="font-display text-xl font-bold">Articles & Reviews</h3>
+            </div>
+            <div className="space-y-2">
+              {articlesData.articles.slice(0, 6).map((article: any, index: number) => (
+                <div
+                  key={index}
+                  className="bg-white dark:bg-card rounded-xl border border-border p-3 flex items-start gap-3 cursor-pointer hover:border-blue-300 transition-colors"
+                  onClick={() => article.url && window.open(article.url, '_blank')}
+                >
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Newspaper size={14} className="text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground line-clamp-2">{article.title}</p>
+                    {article.snippet && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{article.snippet}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      {article.source && (
+                        <span className="text-xs text-blue-600 font-medium">{article.source}</span>
+                      )}
+                      {article.publishedAt && (
+                        <span className="text-xs text-muted-foreground">{article.publishedAt}</span>
+                      )}
+                    </div>
+                  </div>
+                  {article.url && <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
                 </div>
               ))}
             </div>

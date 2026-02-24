@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { priceTrackers, productOffers, priceHistory, retailers } from "@shared/schema";
+import { priceTrackers, productOffers, priceHistory, retailers, notifications } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { storage } from "../storage";
 
@@ -89,7 +89,21 @@ async function checkPriceForTracker(tracker: typeof priceTrackers.$inferSelect):
           retailerName: retailer.name,
           priceDropPercent
         });
-        
+
+        // Create in-app notification
+        const isTargetReached = tracker.targetPrice && currentPrice <= tracker.targetPrice;
+        await db.insert(notifications).values({
+          userId: tracker.userId,
+          type: isTargetReached ? 'target_reached' : 'price_drop',
+          title: isTargetReached
+            ? `Target price reached for ${product.name}!`
+            : `Price drop on ${product.name}!`,
+          message: isTargetReached
+            ? `${product.name} is now ${offer.currency === 'USD' ? '$' : '₹'}${currentPrice.toFixed(2)} at ${retailer.name} — below your target of ${offer.currency === 'USD' ? '$' : '₹'}${tracker.targetPrice!.toFixed(2)}.`
+            : `${product.name} dropped ${priceDropPercent.toFixed(1)}% to ${offer.currency === 'USD' ? '$' : '₹'}${currentPrice.toFixed(2)} at ${retailer.name}.`,
+          data: { productId: tracker.productId, oldPrice: lastPrice, newPrice: currentPrice, retailerName: retailer.name },
+        });
+
         await db.update(priceTrackers)
           .set({ lastNotifiedAt: new Date() })
           .where(eq(priceTrackers.id, tracker.id));
