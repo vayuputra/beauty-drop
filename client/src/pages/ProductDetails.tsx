@@ -1,7 +1,7 @@
 import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper, ImageOff } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,9 @@ import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
 import { ReviewSummary } from "@/components/ReviewSummary";
 import { useUser } from "@/hooks/use-user";
 
-function getPlaceholderUrl(brand: string, name: string): string {
-  const text = encodeURIComponent(`${brand}\n${name.substring(0, 20)}`);
-  return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
+function isPlaceholderImage(url: string | null | undefined): boolean {
+  if (!url) return true;
+  return url.includes('placehold.co') || url.includes('unsplash.com');
 }
 
 function getProxiedImageUrl(url: string): string {
@@ -68,9 +68,8 @@ export default function ProductDetails() {
     refetch();
   };
 
-  const fallbackUrl = getPlaceholderUrl(product.brand, product.name);
-  const rawUrl = product.imageUrl || fallbackUrl;
-  const imageUrl = imgError ? fallbackUrl : getProxiedImageUrl(rawUrl);
+  const hasRealImage = !isPlaceholderImage(product.imageUrl) && !imgError;
+  const imageUrl = hasRealImage ? getProxiedImageUrl(product.imageUrl) : '';
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -135,12 +134,23 @@ export default function ProductDetails() {
           </Button>
         </div>
         
-        <img 
-          src={imageUrl} 
-          alt={product.name}
-          className="w-full h-full object-cover"
-          onError={() => setImgError(true)}
-        />
+        {hasRealImage ? (
+          <img
+            src={imageUrl}
+            alt={product.name}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-pink-100 p-8 text-center">
+            <ImageOff size={48} className="text-pink-300 mb-4" />
+            <p className="text-2xl font-bold text-pink-600">{product.brand}</p>
+            <p className="text-base text-pink-500 mt-2 max-w-[250px]">{product.name}</p>
+            <p className="text-xs text-pink-400 mt-4">
+              Tap the refresh button to search for the product image
+            </p>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-90" />
       </div>
 

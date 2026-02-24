@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { ArrowUpRight, Heart } from "lucide-react";
+import { ArrowUpRight, Heart, ImageOff } from "lucide-react";
 import { type ProductWithPriceRange } from "@shared/schema";
 import { motion } from "framer-motion";
 import { useState } from "react";
@@ -16,9 +16,10 @@ function formatPrice(price: number, currency: string): string {
   return `$${price.toFixed(2)}`;
 }
 
-function getPlaceholderUrl(brand: string, name: string): string {
-  const text = encodeURIComponent(`${brand}\n${name.substring(0, 20)}`);
-  return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
+/** Check if URL is a placeholder (not a real product image) */
+function isPlaceholderImage(url: string | null | undefined): boolean {
+  if (!url) return true;
+  return url.includes('placehold.co') || url.includes('unsplash.com');
 }
 
 function getProxiedImageUrl(url: string): string {
@@ -30,9 +31,10 @@ function getProxiedImageUrl(url: string): string {
 
 export function ProductCard({ product }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
-  const fallbackUrl = getPlaceholderUrl(product.brand, product.name);
-  const rawUrl = product.imageUrl || fallbackUrl;
-  const imageUrl = imgError ? fallbackUrl : getProxiedImageUrl(rawUrl);
+  const hasRealImage = !isPlaceholderImage(product.imageUrl) && !imgError;
+  const displayUrl = hasRealImage
+    ? getProxiedImageUrl(product.imageUrl)
+    : '';
 
   const { data: favoriteIds } = useFavoriteIds();
   const toggleFavorite = useToggleFavorite();
@@ -55,13 +57,22 @@ export function ProductCard({ product }: ProductCardProps) {
       >
         {/* Image Container */}
         <div className="aspect-[4/5] relative overflow-hidden bg-secondary/30">
-          <img
-            src={imageUrl}
-            alt={product.name}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-            loading="lazy"
-            onError={() => setImgError(true)}
-          />
+          {hasRealImage ? (
+            <img
+              src={displayUrl}
+              alt={product.name}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              loading="lazy"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-pink-100 p-6 text-center">
+              <ImageOff size={36} className="text-pink-300 mb-3" />
+              <p className="text-lg font-bold text-pink-600">{product.brand}</p>
+              <p className="text-sm text-pink-500 line-clamp-2 mt-1">{product.name}</p>
+              <p className="text-[10px] text-pink-400 mt-3 uppercase tracking-wider">Tap to view product</p>
+            </div>
+          )}
 
           {/* Category Badge */}
           <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">

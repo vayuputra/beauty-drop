@@ -8,7 +8,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, gte, count } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
 import { users } from "@shared/models/auth";
-import { searchInfluencersForProduct, searchProductImage } from "./services/perplexity";
+import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
@@ -280,24 +280,61 @@ export async function registerRoutes(
 
     try {
       const imageInfo = await searchProductImage(product.name, product.brand, product.category);
-      
-      if (imageInfo && imageInfo.officialImageUrl) {
-        await storage.updateProductImage(productId, imageInfo.officialImageUrl);
-        
-        await db.insert(refreshLogs).values({
-          productId,
-          refreshType: 'image',
-          status: 'success',
-          message: `Found image from ${imageInfo.source}`
-        });
 
-        res.json({ 
-          success: true, 
-          imageUrl: imageInfo.officialImageUrl,
-          source: imageInfo.source 
-        });
+      if (imageInfo && imageInfo.officialImageUrl) {
+        // Verify the image is actually the right product using GPT-4o vision
+        let verified = true;
+        try {
+          const verification = await verifyProductImage(product, imageInfo.officialImageUrl);
+          verified = verification.isAuthentic && (verification.confidence || 0) >= 40;
+          if (!verified) {
+            console.log(`Image verification failed for ${product.name}: ${verification.issues?.join(', ') || 'low confidence'}`);
+          }
+        } catch {
+          // If verification service fails, still accept the image (better than nothing)
+          verified = true;
+        }
+
+        if (verified) {
+          await storage.updateProductImage(productId, imageInfo.officialImageUrl);
+          cache.invalidate(`product:${productId}`);
+          cache.invalidatePattern('drops:');
+
+          await db.insert(refreshLogs).values({
+            productId,
+            refreshType: 'image',
+            status: 'success',
+            message: `Found verified image from ${imageInfo.source}`
+          });
+
+          res.json({
+            success: true,
+            imageUrl: imageInfo.officialImageUrl,
+            source: imageInfo.source,
+            verified: true
+          });
+        } else {
+          // Image found but failed verification — set placeholder instead of wrong image
+          const placeholder = getPlaceholderImage(product.brand, product.name);
+          await storage.updateProductImage(productId, placeholder);
+          cache.invalidate(`product:${productId}`);
+
+          await db.insert(refreshLogs).values({
+            productId,
+            refreshType: 'image',
+            status: 'failed',
+            message: `Image from ${imageInfo.source} failed verification`
+          });
+
+          res.json({ success: false, message: "Found image but it didn't match the product — placeholder set" });
+        }
       } else {
-        res.json({ success: false, message: "No official image found" });
+        // No image found at all — set a branded placeholder
+        const placeholder = getPlaceholderImage(product.brand, product.name);
+        await storage.updateProductImage(productId, placeholder);
+        cache.invalidate(`product:${productId}`);
+
+        res.json({ success: false, message: "No official image found — placeholder set" });
       }
     } catch (error) {
       console.error("Error refreshing image:", error);
@@ -525,21 +562,25 @@ export async function registerRoutes(
 
       for (const product of allProducts) {
         try {
-          // Skip if image doesn't look like a placeholder
-          if (product.imageUrl && !product.imageUrl.includes('unsplash.com')) {
+          // Only skip if image looks like a real product image (not a placeholder or stock photo)
+          const isPlaceholder = !product.imageUrl
+            || product.imageUrl.includes('unsplash.com')
+            || product.imageUrl.includes('placehold.co');
+          if (!isPlaceholder) {
             results.push({
               productId: product.id,
               name: product.name,
-              status: 'Skipped (already has custom image)'
+              status: 'Skipped (already has product image)'
             });
             continue;
           }
 
           const imageInfo = await searchProductImage(product.name, product.brand, product.category);
-          
+
           if (imageInfo && imageInfo.officialImageUrl) {
             await storage.updateProductImage(product.id, imageInfo.officialImageUrl);
-            
+            cache.invalidate(`product:${product.id}`);
+
             results.push({
               productId: product.id,
               name: product.name,
@@ -547,10 +588,14 @@ export async function registerRoutes(
               imageUrl: imageInfo.officialImageUrl
             });
           } else {
+            // Set a branded placeholder instead of keeping Unsplash
+            const placeholder = getPlaceholderImage(product.brand, product.name);
+            await storage.updateProductImage(product.id, placeholder);
+
             results.push({
               productId: product.id,
               name: product.name,
-              status: 'No image found'
+              status: 'No image found — placeholder set'
             });
           }
 
@@ -631,7 +676,15 @@ export async function registerRoutes(
         'myntra.com',
         'assets.myntassets.com',
         'www.kaybeauty.in',
-        'kaybeauty.in'
+        'kaybeauty.in',
+        'www.sephora.com',
+        'sephora.com',
+        'theordinary.com',
+        'www.theordinary.com',
+        'images.amazon.com',
+        'images-static.nykaa.com',
+        'www.summerfridays.com',
+        'summerfridays.com'
       ];
 
       let urlObj: URL;
@@ -2121,7 +2174,7 @@ async function seedDatabase() {
         category: prod.category,
         country: prod.country,
         description: prod.description,
-        imageUrl: prod.imageUrl,
+        imageUrl: resolveProductImage(prod.brand, prod.name),
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: youtubeVideoCount,
@@ -2187,7 +2240,7 @@ async function seedDatabase() {
         category: prod.category,
         country: prod.country,
         description: prod.description,
-        imageUrl: prod.imageUrl,
+        imageUrl: resolveProductImage(prod.brand, prod.name),
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: youtubeVideoCount,

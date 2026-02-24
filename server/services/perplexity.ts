@@ -157,15 +157,8 @@ Only return the JSON array, no other text.`;
   }
 }
 
-const CATEGORY_IMAGES: Record<string, string> = {
-  'Makeup': 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600',
-  'Skincare': 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600',
-  'Nails': 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600',
-  'Body': 'https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600',
-  'Hair': 'https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=600',
-  'Fragrance': 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600',
-  'Tools': 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600',
-};
+// No more generic Unsplash fallbacks — they look like real product images but aren't.
+// We return null when we can't find the real image, and let the frontend show a clear placeholder.
 
 const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
   'rare beauty soft pinch liquid blush': {
@@ -264,11 +257,46 @@ const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
   'cetaphil gentle skin cleanser': {
     url: 'https://m.media-amazon.com/images/I/61+y+.L._SL1500_.jpg',
     source: 'Amazon India'
+  },
+  'summer fridays lip butter balm': {
+    url: 'https://www.sephora.com/productimages/sku/s2539082-main-zoom.jpg',
+    source: 'Sephora'
+  },
+  'kay beauty matte drama long stay lipstick': {
+    url: 'https://m.media-amazon.com/images/I/51FYqBjTURL._SL1200_.jpg',
+    source: 'Amazon India'
+  },
+  'maybelline colossal kajal 24hr': {
+    url: 'https://m.media-amazon.com/images/I/51A0kPfDEjL._SL1200_.jpg',
+    source: 'Amazon India'
+  },
+  'lakme compact powder spf 15': {
+    url: 'https://m.media-amazon.com/images/I/51aL2b3pqQL._SL1200_.jpg',
+    source: 'Amazon India'
   }
 };
 
-export function getReliableImageForCategory(category: string): string {
-  return CATEGORY_IMAGES[category] || CATEGORY_IMAGES['Skincare'];
+/** Returns a branded text placeholder instead of a misleading stock photo */
+export function getPlaceholderImage(brand: string, name: string): string {
+  const text = encodeURIComponent(`${brand}\n${name.substring(0, 30)}`);
+  return `https://placehold.co/600x600/fce7f3/db2777?text=${text}`;
+}
+
+/**
+ * Synchronous lookup for known product images.
+ * Returns the real product image URL if we have it, otherwise a branded placeholder.
+ * Used by seed data to avoid inserting random stock photos.
+ */
+export function resolveProductImage(brand: string, name: string): string {
+  const lookupKey = `${brand.toLowerCase()} ${name.toLowerCase()}`;
+  const known = KNOWN_PRODUCT_IMAGES[lookupKey];
+  if (known) return known.url;
+
+  const nameOnly = name.toLowerCase();
+  const knownByName = KNOWN_PRODUCT_IMAGES[nameOnly];
+  if (knownByName) return knownByName.url;
+
+  return getPlaceholderImage(brand, name);
 }
 
 export async function searchProductImage(
@@ -294,9 +322,8 @@ export async function searchProductImage(
 
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) {
-    console.error("PERPLEXITY_API_KEY not set, using category fallback");
-    const imageUrl = getReliableImageForCategory(category || 'Skincare');
-    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+    console.error("PERPLEXITY_API_KEY not set — cannot search for product image");
+    return null;
   }
 
   const prompt = `Find the official product image URL for "${productName}" by ${brand}.
@@ -349,8 +376,7 @@ Return ONLY the JSON object, no other text.`;
 
     if (!response.ok) {
       console.error("Perplexity API error:", response.status, await response.text());
-      const imageUrl = getReliableImageForCategory(category || 'Skincare');
-      return { officialImageUrl: imageUrl, source: 'Unsplash' };
+      return null;
     }
 
     const data: PerplexityResponse = await response.json();
@@ -373,8 +399,7 @@ Return ONLY the JSON object, no other text.`;
       result = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error("Failed to parse Perplexity image response:", parseError, "Raw:", jsonStr.substring(0, 200));
-      const imageUrl = getReliableImageForCategory(category || 'Skincare');
-      return { officialImageUrl: imageUrl, source: 'Unsplash' };
+      return null;
     }
 
     if (result.imageUrl && typeof result.imageUrl === 'string' && result.imageUrl.startsWith('http')) {
@@ -385,13 +410,11 @@ Return ONLY the JSON object, no other text.`;
       };
     }
 
-    console.log(`No valid image found for ${brand} ${productName}, using fallback`);
-    const imageUrl = getReliableImageForCategory(category || 'Skincare');
-    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+    console.log(`No valid image found for ${brand} ${productName}`);
+    return null;
   } catch (error) {
     console.error("Error searching product image:", error);
-    const imageUrl = getReliableImageForCategory(category || 'Skincare');
-    return { officialImageUrl: imageUrl, source: 'Unsplash' };
+    return null;
   }
 }
 
