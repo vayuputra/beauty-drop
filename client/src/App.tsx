@@ -13,6 +13,11 @@ import Onboarding from "@/pages/Onboarding";
 import ProductDetails from "@/pages/ProductDetails";
 import Settings from "@/pages/Settings";
 import SearchPage from "@/pages/Search";
+import WishlistPage from "@/pages/Wishlist";
+import NotificationsPage from "@/pages/Notifications";
+import ComparePage from "@/pages/Compare";
+import AnalyticsPage from "@/pages/Analytics";
+import DigestPage from "@/pages/Digest";
 
 function Router() {
   return (
@@ -22,7 +27,12 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/product/:id" component={ProductDetails} />
       <Route path="/search" component={SearchPage} />
+      <Route path="/wishlist" component={WishlistPage} />
       <Route path="/settings" component={Settings} />
+      <Route path="/notifications" component={NotificationsPage} />
+      <Route path="/compare" component={ComparePage} />
+      <Route path="/analytics" component={AnalyticsPage} />
+      <Route path="/digest" component={DigestPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Beauty Drop pink branding -->
+    <color name="colorPrimary">#DB2777</color>      <!-- pink-600 -->
+    <color name="colorPrimaryDark">#BE185D</color>   <!-- pink-700 -->
+    <color name="colorAccent">#EC4899</color>        <!-- pink-400 -->
+    <color name="splash_bg">#FDF2F8</color>          <!-- pink-50 -->
+</resources>

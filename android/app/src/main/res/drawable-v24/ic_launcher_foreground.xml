@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportHeight="108"
+    android:viewportWidth="108">
+    <!-- Beauty Drop icon: a stylized droplet with a sparkle -->
+    <!-- Droplet shape -->
+    <path
+        android:fillColor="#DB2777"
+        android:pathData="M54,24C54,24 36,48 36,62C36,72 44,80 54,80C64,80 72,72 72,62C72,48 54,24 54,24Z" />
+    <!-- Inner highlight -->
+    <path
+        android:fillColor="#EC4899"
+        android:pathData="M54,30C54,30 42,49 42,60C42,67 47,73 54,73C61,73 66,67 66,60C66,49 54,30 54,30Z" />
+    <!-- Sparkle top-right -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M64,36L66,30L68,36L74,38L68,40L66,46L64,40L58,38Z" />
+    <!-- Shine on droplet -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.6"
+        android:pathData="M47,52C47,52 45,58 46,63C47,66 49,68 49,68C49,68 46,65 45.5,61C45,57 47,52 47,52Z" />
+</vector>

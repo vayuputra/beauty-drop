@@ -1,4 +1,18 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
+
+/**
+ * Resolve API URL. On the web, API calls are relative (/api/...).
+ * On native (Capacitor), they need the full backend URL.
+ * Set VITE_API_BASE_URL at build time, or it falls back to the current origin.
+ */
+function resolveUrl(path: string): string {
+  if (Capacitor.isNativePlatform()) {
+    const base = import.meta.env.VITE_API_BASE_URL || '';
+    if (base) return `${base}${path}`;
+  }
+  return path;
+}
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -12,7 +26,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const res = await fetch(resolveUrl(url), {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -29,7 +43,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = queryKey.join("/") as string;
+    const res = await fetch(resolveUrl(url), {
       credentials: "include",
     });
 

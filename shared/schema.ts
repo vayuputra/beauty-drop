@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -32,7 +32,11 @@ export const products = pgTable("products", {
   influencerCount: integer("influencer_count").default(0),
   lastInfluencerRefresh: timestamp("last_influencer_refresh"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_products_country").on(table.country),
+  index("idx_products_category").on(table.category),
+  index("idx_products_brand").on(table.brand),
+]);
 
 export const productOffers = pgTable("product_offers", {
   id: serial("id").primaryKey(),
@@ -63,7 +67,11 @@ export const clicks = pgTable("clicks", {
   productId: integer("product_id").references(() => products.id),
   retailerId: integer("retailer_id").references(() => retailers.id),
   clickedAt: timestamp("clicked_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_clicks_product").on(table.productId),
+  index("idx_clicks_retailer").on(table.retailerId),
+  index("idx_clicks_date").on(table.clickedAt),
+]);
 
 export const influencerMentions = pgTable("influencer_mentions", {
   id: serial("id").primaryKey(),
@@ -77,7 +85,10 @@ export const influencerMentions = pgTable("influencer_mentions", {
   thumbnailUrl: text("thumbnail_url"),
   embedUrl: text("embed_url"),
   discoveredAt: timestamp("discovered_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_influencer_product").on(table.productId),
+  index("idx_influencer_discovered").on(table.discoveredAt),
+]);
 
 export const refreshLogs = pgTable("refresh_logs", {
   id: serial("id").primaryKey(),
@@ -159,6 +170,53 @@ export const imageVerifications = pgTable("image_verifications", {
   verifiedAt: timestamp("verified_at").defaultNow(),
 });
 
+// User favorites / wishlist
+export const favorites = pgTable("favorites", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_favorites_user").on(table.userId),
+]);
+
+// In-app notifications
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // 'price_drop', 'target_reached', 'weekly_digest', 'trending'
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  data: jsonb("data").$type<Record<string, any>>(), // extra context (productId, etc.)
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_notifications_user").on(table.userId),
+  index("idx_notifications_read").on(table.userId, table.isRead),
+]);
+
+// Cached articles for products
+export const productArticles = pgTable("product_articles", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  title: text("title").notNull(),
+  url: text("url").notNull(),
+  source: text("source"), // e.g., 'Vogue', 'Allure', 'beauty blog'
+  snippet: text("snippet"),
+  publishedAt: text("published_at"),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+}, (table) => [
+  index("idx_articles_product").on(table.productId),
+]);
+
+// Product comparison lists
+export const comparisons = pgTable("comparisons", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  productIds: jsonb("product_ids").$type<number[]>().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const productRelations = relations(products, ({ one, many }) => ({
   offers: many(productOffers),
@@ -229,6 +287,17 @@ export const videoRelations = relations(productVideos, ({ one }) => ({
   }),
 }));
 
+export const favoriteRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+  product: one(products, {
+    fields: [favorites.productId],
+    references: [products.id],
+  }),
+}));
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   country: true,
@@ -258,6 +327,10 @@ export type PriceTracker = typeof priceTrackers.$inferSelect;
 export type PriceHistory = typeof priceHistory.$inferSelect;
 export type WeeklyDigest = typeof weeklyDigests.$inferSelect;
 export type ImageVerification = typeof imageVerifications.$inferSelect;
+export type Favorite = typeof favorites.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type ProductArticle = typeof productArticles.$inferSelect;
+export type Comparison = typeof comparisons.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;

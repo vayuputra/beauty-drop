@@ -1,22 +1,23 @@
 import { useUser } from "@/hooks/use-user";
-import { useDrops, useRefreshTrending } from "@/hooks/use-drops";
+import { useDrops, useRefreshTrending, useUnreadNotificationCount } from "@/hooks/use-drops";
 import { ProductCard } from "@/components/ProductCard";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
-import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { Link, useLocation } from "wouter";
+import { useState, useEffect, useMemo } from "react";
 import { clsx } from "clsx";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-const FILTERS = ["All", "Trending", "New", "Skincare", "Makeup"];
+const FILTERS = ["All", "Trending", "Skincare", "Makeup", "Body", "Nails"];
 
 export default function Home() {
   const { data: user, isLoading: userLoading } = useUser();
   const [, setLocation] = useLocation();
   const [activeFilter, setActiveFilter] = useState("All");
   const refreshTrending = useRefreshTrending();
+  const { data: unreadData } = useUnreadNotificationCount();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -29,6 +30,19 @@ export default function Home() {
 
   // Fetch drops based on user country preference
   const { data: products, isLoading: productsLoading, refetch } = useDrops(user?.country || undefined);
+
+  // Apply client-side filtering based on selected filter chip
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    if (activeFilter === "All") return products;
+    if (activeFilter === "Trending") {
+      return [...products].sort((a, b) => (b.influencerCount ?? 0) - (a.influencerCount ?? 0));
+    }
+    // Filter by category (Skincare, Makeup, Body, Nails, etc.)
+    return products.filter(
+      (p) => p.category.toLowerCase() === activeFilter.toLowerCase()
+    );
+  }, [products, activeFilter]);
 
   const handleRefreshTrending = async () => {
     try {
@@ -62,7 +76,7 @@ export default function Home() {
               Curated for {user.country === 'IN' ? '🇮🇳 India' : '🇺🇸 USA'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -78,6 +92,14 @@ export default function Home() {
               )}
               {refreshTrending.isPending ? 'Refreshing...' : 'Refresh'}
             </Button>
+            <Link href="/notifications" className="relative h-10 w-10 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors">
+              <Bell size={18} />
+              {(unreadData?.count || 0) > 0 && (
+                <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {unreadData.count > 9 ? '9+' : unreadData.count}
+                </span>
+              )}
+            </Link>
             <div className="h-10 w-10 rounded-full bg-primary/50 flex items-center justify-center text-accent font-bold overflow-hidden">
               {user.profileImageUrl ? (
                 <img src={user.profileImageUrl} alt="" className="w-full h-full object-cover" />
@@ -111,10 +133,16 @@ export default function Home() {
       <main className="max-w-md mx-auto px-6 mt-4 space-y-8">
         {productsLoading ? (
           <Loader />
-        ) : products && products.length > 0 ? (
-          products.map((product) => (
+        ) : filteredProducts.length > 0 ? (
+          filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))
+        ) : products && products.length > 0 ? (
+          <div className="text-center py-16 px-4">
+            <p className="text-muted-foreground text-sm">
+              No {activeFilter.toLowerCase()} products found. Try a different filter.
+            </p>
+          </div>
         ) : (
           <div className="text-center py-16 px-4">
             <div className="mb-6">

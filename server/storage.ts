@@ -1,13 +1,14 @@
 import { db } from "./db";
 import {
   users, products, retailers, productOffers, productVideos, clicks, influencerMentions,
-  productTrustScores, productReviewSummaries, priceTrackers, priceHistory,
+  productTrustScores, productReviewSummaries, priceTrackers, priceHistory, favorites,
   type User, type InsertUser, type UpdateUserRequest,
   type Product, type ProductWithDetails, type ProductWithPriceRange, type InsertClick, type InfluencerMention,
   type ProductTrustScore, type InsertTrustScore, type ProductReviewSummary, type InsertReviewSummary,
-  type PriceTracker, type InsertPriceTracker, type PriceHistory, type InsertPriceHistory
+  type PriceTracker, type InsertPriceTracker, type PriceHistory, type InsertPriceHistory,
+  type Favorite
 } from "@shared/schema";
-import { eq, gt, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, gt, desc, and, sql, inArray, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // User
@@ -27,6 +28,9 @@ export interface IStorage {
   addInfluencerMention(productId: number, influencer: Omit<InfluencerMention, 'id' | 'productId' | 'discoveredAt'>): Promise<void>;
   clearInfluencersForProduct(productId: number): Promise<void>;
   
+  // Search
+  searchProducts(query: string, country?: string): Promise<ProductWithPriceRange[]>;
+
   // Analytics
   trackClick(click: InsertClick): Promise<void>;
   
@@ -48,6 +52,12 @@ export interface IStorage {
   // Price History
   addPriceHistory(entry: InsertPriceHistory): Promise<void>;
   getPriceHistory(productId: number, limit?: number): Promise<PriceHistory[]>;
+
+  // Favorites
+  getUserFavorites(userId: string): Promise<ProductWithPriceRange[]>;
+  addFavorite(userId: string, productId: number): Promise<Favorite>;
+  removeFavorite(userId: string, productId: number): Promise<void>;
+  isFavorite(userId: string, productId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -148,6 +158,56 @@ export class DatabaseStorage implements IStorage {
       videos,
       influencers
     };
+  }
+
+  async searchProducts(query: string, country?: string): Promise<ProductWithPriceRange[]> {
+    const searchPattern = `%${query}%`;
+    const conditions = [
+      or(
+        ilike(products.name, searchPattern),
+        ilike(products.brand, searchPattern),
+        ilike(products.category, searchPattern),
+        ilike(products.description, searchPattern)
+      )
+    ];
+    if (country) {
+      conditions.push(eq(products.country, country));
+    }
+
+    const productList = await db
+      .select()
+      .from(products)
+      .where(and(...conditions))
+      .orderBy(desc(products.influencerCount));
+
+    if (productList.length === 0) return [];
+
+    const productIds = productList.map(p => p.id);
+    const allOffers = await db
+      .select()
+      .from(productOffers)
+      .where(inArray(productOffers.productId, productIds));
+
+    const offersByProductId = new Map<number, typeof allOffers>();
+    for (const offer of allOffers) {
+      const existing = offersByProductId.get(offer.productId) || [];
+      existing.push(offer);
+      offersByProductId.set(offer.productId, existing);
+    }
+
+    return productList.map((product) => {
+      const offers = offersByProductId.get(product.id) || [];
+      if (offers.length === 0) {
+        return { ...product, minPrice: null, maxPrice: null, currency: null };
+      }
+      const prices = offers.map(o => o.price);
+      return {
+        ...product,
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        currency: offers[0].currency,
+      };
+    });
   }
 
   async getAllProducts(): Promise<Product[]> {
@@ -269,6 +329,61 @@ export class DatabaseStorage implements IStorage {
       .where(eq(priceHistory.productId, productId))
       .orderBy(desc(priceHistory.observedAt))
       .limit(limit);
+  }
+
+  async getUserFavorites(userId: string): Promise<ProductWithPriceRange[]> {
+    const userFavorites = await db.select({ productId: favorites.productId })
+      .from(favorites)
+      .where(eq(favorites.userId, userId))
+      .orderBy(desc(favorites.createdAt));
+
+    if (userFavorites.length === 0) return [];
+
+    const productIds = userFavorites.map(f => f.productId);
+    const productList = await db.select().from(products)
+      .where(inArray(products.id, productIds));
+
+    const allOffers = await db.select().from(productOffers)
+      .where(inArray(productOffers.productId, productIds));
+
+    const offersByProductId = new Map<number, typeof allOffers>();
+    for (const offer of allOffers) {
+      const existing = offersByProductId.get(offer.productId) || [];
+      existing.push(offer);
+      offersByProductId.set(offer.productId, existing);
+    }
+
+    return productList.map((product) => {
+      const offers = offersByProductId.get(product.id) || [];
+      if (offers.length === 0) {
+        return { ...product, minPrice: null, maxPrice: null, currency: null };
+      }
+      const prices = offers.map(o => o.price);
+      return {
+        ...product,
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        currency: offers[0].currency,
+      };
+    });
+  }
+
+  async addFavorite(userId: string, productId: number): Promise<Favorite> {
+    const [fav] = await db.insert(favorites).values({ userId, productId }).returning();
+    return fav;
+  }
+
+  async removeFavorite(userId: string, productId: number): Promise<void> {
+    await db.delete(favorites).where(
+      and(eq(favorites.userId, userId), eq(favorites.productId, productId))
+    );
+  }
+
+  async isFavorite(userId: string, productId: number): Promise<boolean> {
+    const [fav] = await db.select().from(favorites).where(
+      and(eq(favorites.userId, userId), eq(favorites.productId, productId))
+    );
+    return !!fav;
   }
 }
 

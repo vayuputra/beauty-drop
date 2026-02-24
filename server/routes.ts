@@ -5,15 +5,25 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory } from "@shared/schema";
-import { searchInfluencersForProduct, searchProductImage } from "./services/perplexity";
+import { eq, desc, sql, and, gte, count } from "drizzle-orm";
+import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
+import { users } from "@shared/models/auth";
+import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
 import { generateSmartLink } from "./services/deepLinks";
 import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
 import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
+import { fetchArticlesForProduct } from "./services/articles";
+import { cache, CACHE_TTL } from "./services/cache";
+import bcrypt from "bcryptjs";
+
+function parseProductId(id: string): number | null {
+  const parsed = Number(id);
+  if (isNaN(parsed) || parsed <= 0 || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -78,14 +88,47 @@ export async function registerRoutes(
     }
     
     country = country || 'US';
+
+    // Check cache first
+    const cacheKey = `drops:${country}`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
     // Only return products that have influencer mentions (trending products)
     const trendingProducts = await storage.getTrendingProductsByCountry(country);
+    cache.set(cacheKey, trendingProducts, CACHE_TTL.DROPS);
     res.json(trendingProducts);
   });
 
+  // Search products
+  app.get("/api/search", async (req, res) => {
+    const query = (req.query.q as string || '').trim();
+    if (!query || query.length < 2) {
+      return res.json([]);
+    }
+    const country = req.query.country as string | undefined;
+
+    const cacheKey = `search:${query}:${country || 'all'}`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
+    const results = await storage.searchProducts(query, country);
+    cache.set(cacheKey, results, CACHE_TTL.SEARCH);
+    res.json(results);
+  });
+
   app.get(api.products.get.path, async (req, res) => {
-    const product = await storage.getProduct(Number(req.params.id));
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    const cacheKey = `product:${productId}`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
+    const product = await storage.getProduct(productId);
     if (!product) return res.sendStatus(404);
+
+    cache.set(cacheKey, product, CACHE_TTL.PRODUCT);
     res.json(product);
   });
 
@@ -104,9 +147,58 @@ export async function registerRoutes(
     }
   });
 
+  // Favorites / Wishlist Routes
+  app.get("/api/favorites", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const favs = await storage.getUserFavorites(userId);
+    res.json(favs);
+  });
+
+  app.get("/api/favorites/ids", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const favs = await db.select({ productId: favorites.productId })
+      .from(favorites)
+      .where(eq(favorites.userId, userId));
+    res.json(favs.map(f => f.productId));
+  });
+
+  app.post("/api/products/:id/favorite", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    const already = await storage.isFavorite(userId, productId);
+    if (already) return res.json({ success: true, message: "Already favorited" });
+
+    await storage.addFavorite(userId, productId);
+    res.status(201).json({ success: true });
+  });
+
+  app.delete("/api/products/:id/favorite", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    await storage.removeFavorite(userId, productId);
+    res.json({ success: true });
+  });
+
   // Refresh Trending - Discover influencers for a specific product
   app.post("/api/products/:id/refresh-influencers", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -178,7 +270,8 @@ export async function registerRoutes(
 
   // Refresh product image from official sources
   app.post("/api/products/:id/refresh-image", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -187,24 +280,61 @@ export async function registerRoutes(
 
     try {
       const imageInfo = await searchProductImage(product.name, product.brand, product.category);
-      
-      if (imageInfo && imageInfo.officialImageUrl) {
-        await storage.updateProductImage(productId, imageInfo.officialImageUrl);
-        
-        await db.insert(refreshLogs).values({
-          productId,
-          refreshType: 'image',
-          status: 'success',
-          message: `Found image from ${imageInfo.source}`
-        });
 
-        res.json({ 
-          success: true, 
-          imageUrl: imageInfo.officialImageUrl,
-          source: imageInfo.source 
-        });
+      if (imageInfo && imageInfo.officialImageUrl) {
+        // Verify the image is actually the right product using GPT-4o vision
+        let verified = true;
+        try {
+          const verification = await verifyProductImage(product, imageInfo.officialImageUrl);
+          verified = verification.isAuthentic && (verification.confidence || 0) >= 40;
+          if (!verified) {
+            console.log(`Image verification failed for ${product.name}: ${verification.issues?.join(', ') || 'low confidence'}`);
+          }
+        } catch {
+          // If verification service fails, still accept the image (better than nothing)
+          verified = true;
+        }
+
+        if (verified) {
+          await storage.updateProductImage(productId, imageInfo.officialImageUrl);
+          cache.invalidate(`product:${productId}`);
+          cache.invalidatePattern('drops:');
+
+          await db.insert(refreshLogs).values({
+            productId,
+            refreshType: 'image',
+            status: 'success',
+            message: `Found verified image from ${imageInfo.source}`
+          });
+
+          res.json({
+            success: true,
+            imageUrl: imageInfo.officialImageUrl,
+            source: imageInfo.source,
+            verified: true
+          });
+        } else {
+          // Image found but failed verification — set placeholder instead of wrong image
+          const placeholder = getPlaceholderImage(product.brand, product.name);
+          await storage.updateProductImage(productId, placeholder);
+          cache.invalidate(`product:${productId}`);
+
+          await db.insert(refreshLogs).values({
+            productId,
+            refreshType: 'image',
+            status: 'failed',
+            message: `Image from ${imageInfo.source} failed verification`
+          });
+
+          res.json({ success: false, message: "Found image but it didn't match the product — placeholder set" });
+        }
       } else {
-        res.json({ success: false, message: "No official image found" });
+        // No image found at all — set a branded placeholder
+        const placeholder = getPlaceholderImage(product.brand, product.name);
+        await storage.updateProductImage(productId, placeholder);
+        cache.invalidate(`product:${productId}`);
+
+        res.json({ success: false, message: "No official image found — placeholder set" });
       }
     } catch (error) {
       console.error("Error refreshing image:", error);
@@ -214,8 +344,8 @@ export async function registerRoutes(
 
   // Refresh prices for a product from Python fetcher or simulate price update
   app.post("/api/products/:id/refresh-prices", isAuthenticated, async (req, res) => {
-    // Rate limiting: only allow price refresh if last update was more than 5 minutes ago
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -312,7 +442,8 @@ export async function registerRoutes(
 
   // Refresh all data for a product (influencers + image)
   app.post("/api/products/:id/refresh-all", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -431,21 +562,25 @@ export async function registerRoutes(
 
       for (const product of allProducts) {
         try {
-          // Skip if image doesn't look like a placeholder
-          if (product.imageUrl && !product.imageUrl.includes('unsplash.com')) {
+          // Only skip if image looks like a real product image (not a placeholder or stock photo)
+          const isPlaceholder = !product.imageUrl
+            || product.imageUrl.includes('unsplash.com')
+            || product.imageUrl.includes('placehold.co');
+          if (!isPlaceholder) {
             results.push({
               productId: product.id,
               name: product.name,
-              status: 'Skipped (already has custom image)'
+              status: 'Skipped (already has product image)'
             });
             continue;
           }
 
           const imageInfo = await searchProductImage(product.name, product.brand, product.category);
-          
+
           if (imageInfo && imageInfo.officialImageUrl) {
             await storage.updateProductImage(product.id, imageInfo.officialImageUrl);
-            
+            cache.invalidate(`product:${product.id}`);
+
             results.push({
               productId: product.id,
               name: product.name,
@@ -453,10 +588,14 @@ export async function registerRoutes(
               imageUrl: imageInfo.officialImageUrl
             });
           } else {
+            // Set a branded placeholder instead of keeping Unsplash
+            const placeholder = getPlaceholderImage(product.brand, product.name);
+            await storage.updateProductImage(product.id, placeholder);
+
             results.push({
               productId: product.id,
               name: product.name,
-              status: 'No image found'
+              status: 'No image found — placeholder set'
             });
           }
 
@@ -537,7 +676,15 @@ export async function registerRoutes(
         'myntra.com',
         'assets.myntassets.com',
         'www.kaybeauty.in',
-        'kaybeauty.in'
+        'kaybeauty.in',
+        'www.sephora.com',
+        'sephora.com',
+        'theordinary.com',
+        'www.theordinary.com',
+        'images.amazon.com',
+        'images-static.nykaa.com',
+        'www.summerfridays.com',
+        'summerfridays.com'
       ];
 
       let urlObj: URL;
@@ -569,7 +716,18 @@ export async function registerRoutes(
       }
 
       const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+      // Validate that the response is actually an image
+      if (!contentType.startsWith('image/')) {
+        return res.status(400).json({ error: 'URL does not point to an image' });
+      }
+
       const buffer = await response.arrayBuffer();
+
+      // Limit proxy to 10MB images to prevent memory abuse
+      if (buffer.byteLength > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Image too large' });
+      }
 
       // Set caching headers (cache for 1 day)
       res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -581,9 +739,36 @@ export async function registerRoutes(
     }
   });
 
+  // Discussions route - find Reddit/forum discussions about a product
+  app.get("/api/products/:id/discussions", async (req, res) => {
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    const product = await storage.getProduct(productId);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    // Check if we have trust score data with Reddit sources
+    const trustScore = await storage.getTrustScore(productId);
+    if (trustScore && trustScore.redditSources && (trustScore.redditSources as string[]).length > 0) {
+      return res.json({
+        exists: true,
+        discussions: (trustScore.redditSources as string[]).map((source: string) => ({
+          title: source,
+          url: source.startsWith('http') ? source : null,
+          platform: 'reddit',
+        })),
+        sentimentScore: trustScore.redditSentimentScore,
+        mentionCount: trustScore.redditMentions,
+      });
+    }
+
+    return res.json({ exists: false, discussions: [] });
+  });
+
   // Trust Score Routes
   app.get("/api/products/:id/trust-score", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const trustScore = await storage.getTrustScore(productId);
     
     if (!trustScore) {
@@ -600,7 +785,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/products/:id/calculate-trust-score", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -626,18 +812,20 @@ export async function registerRoutes(
 
   // Review Summary Routes
   app.get("/api/products/:id/review-summary", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const summary = await storage.getReviewSummary(productId);
-    
+
     if (!summary) {
       return res.json({ exists: false, message: "No review summary generated yet" });
     }
-    
+
     res.json({ exists: true, ...summary });
   });
 
   app.post("/api/products/:id/generate-review-summary", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -673,7 +861,8 @@ export async function registerRoutes(
     const userId = (req.user as any).claims?.sub;
     if (!userId) return res.sendStatus(401);
 
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const priceTrackerInput = z.object({
       targetPrice: z.number().positive().nullable().optional(),
       notifyOnAnyDrop: z.boolean().optional(),
@@ -705,7 +894,8 @@ export async function registerRoutes(
     if (!userId) return res.sendStatus(401);
 
     // Verify the tracker belongs to the requesting user
-    const trackerId = Number(req.params.id);
+    const trackerId = parseProductId(req.params.id);
+    if (!trackerId) return res.status(400).json({ error: "Invalid tracker ID" });
     const userTrackers = await storage.getUserPriceTrackers(userId);
     const ownsTracker = userTrackers.some(t => t.id === trackerId);
     if (!ownsTracker) {
@@ -717,7 +907,8 @@ export async function registerRoutes(
   });
 
   app.get("/api/products/:id/price-history", async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const limit = Number(req.query.limit) || 30;
     const history = await storage.getPriceHistory(productId, limit);
     res.json(history);
@@ -725,7 +916,8 @@ export async function registerRoutes(
 
   // Image Verification Route
   app.post("/api/products/:id/verify-image", isAuthenticated, async (req, res) => {
-    const productId = Number(req.params.id);
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
     
     if (!product) {
@@ -751,9 +943,25 @@ export async function registerRoutes(
   // Smart Deep Link Route
   app.get("/api/smart-link", async (req, res) => {
     const { retailer, url } = req.query;
-    
+
     if (!retailer || !url) {
       return res.status(400).json({ error: "Missing retailer or url parameter" });
+    }
+
+    // Validate URL to prevent injection attacks
+    try {
+      const parsed = new URL(url as string);
+      const allowedHosts = [
+        'www.sephora.com', 'www.ulta.com', 'www.amazon.com', 'www.amazon.in',
+        'www.nykaa.com', 'www.purplle.com', 'www.myntra.com', 'www.tatacliq.com',
+        'www.sephora.in', 'sephora.com', 'ulta.com', 'amazon.com', 'amazon.in',
+        'nykaa.com', 'purplle.com', 'myntra.com', 'tatacliq.com', 'sephora.in'
+      ];
+      if (!allowedHosts.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))) {
+        return res.status(400).json({ error: "URL domain not allowed" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid URL" });
     }
 
     const userAgent = req.headers['user-agent'] || '';
@@ -762,7 +970,7 @@ export async function registerRoutes(
       url as string,
       userAgent
     );
-    
+
     res.json({ smartLink });
   });
 
@@ -880,6 +1088,319 @@ export async function registerRoutes(
     } catch (error) {
       res.json({ pythonFetcher: "error", error: String(error) });
     }
+  });
+
+  // ====== STANDALONE AUTH (email/password - works without Replit) ======
+  app.post("/api/auth/register", async (req, res) => {
+    const input = z.object({
+      email: z.string().email(),
+      password: z.string().min(8, "Password must be at least 8 characters"),
+      firstName: z.string().min(1),
+      lastName: z.string().optional(),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ error: input.error.errors[0].message });
+    }
+
+    const { email, password, firstName, lastName } = input.data;
+
+    // Check if email already exists
+    const [existing] = await db.select().from(users).where(eq(users.email, email));
+    if (existing) {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const [user] = await db.insert(users).values({
+      email,
+      passwordHash,
+      firstName,
+      lastName: lastName || null,
+    }).returning();
+
+    // Set session
+    (req as any).session.userId = user.id;
+    res.status(201).json({ success: true, user: { id: user.id, email: user.email, firstName: user.firstName } });
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    const input = z.object({
+      email: z.string().email(),
+      password: z.string().min(1),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ error: input.error.errors[0].message });
+    }
+
+    const { email, password } = input.data;
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    (req as any).session.userId = user.id;
+    res.json({ success: true, user: { id: user.id, email: user.email, firstName: user.firstName } });
+  });
+
+  // ====== NOTIFICATIONS ======
+  app.get("/api/notifications", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const userNotifications = await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+    res.json(userNotifications);
+  });
+
+  app.get("/api/notifications/unread-count", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const [result] = await db.select({ count: count() }).from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    res.json({ count: result?.count || 0 });
+  });
+
+  app.post("/api/notifications/mark-read", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const { ids } = req.body;
+    if (Array.isArray(ids) && ids.length > 0) {
+      for (const id of ids) {
+        await db.update(notifications)
+          .set({ isRead: true })
+          .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+      }
+    } else {
+      // Mark all as read
+      await db.update(notifications)
+        .set({ isRead: true })
+        .where(eq(notifications.userId, userId));
+    }
+    res.json({ success: true });
+  });
+
+  // ====== ARTICLES ======
+  app.get("/api/products/:id/articles", async (req, res) => {
+    const productId = parseProductId(req.params.id);
+    if (!productId) return res.status(400).json({ error: "Invalid product ID" });
+
+    // Check cache first
+    const cacheKey = `articles:${productId}`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
+    const product = await storage.getProduct(productId);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    // Check DB for recently fetched articles (within 24 hours)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const existingArticles = await db.select().from(productArticles)
+      .where(and(eq(productArticles.productId, productId), gte(productArticles.fetchedAt, oneDayAgo)));
+
+    if (existingArticles.length > 0) {
+      const result = { exists: true, articles: existingArticles };
+      cache.set(cacheKey, result, CACHE_TTL.ARTICLES);
+      return res.json(result);
+    }
+
+    // Fetch fresh articles
+    const articles = await fetchArticlesForProduct(product.name, product.brand, product.country);
+
+    if (articles.length > 0) {
+      // Store in DB
+      for (const article of articles) {
+        await db.insert(productArticles).values({
+          productId,
+          title: article.title,
+          url: article.url,
+          source: article.source,
+          snippet: article.snippet,
+          publishedAt: article.publishedAt,
+        }).onConflictDoNothing();
+      }
+    }
+
+    const result = { exists: articles.length > 0, articles };
+    cache.set(cacheKey, result, CACHE_TTL.ARTICLES);
+    res.json(result);
+  });
+
+  // ====== PRODUCT COMPARISON ======
+  app.post("/api/compare", async (req, res) => {
+    const input = z.object({
+      productIds: z.array(z.number().int().positive()).min(2).max(4),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ error: "Provide 2-4 product IDs to compare" });
+    }
+
+    const productsData = [];
+    for (const pid of input.data.productIds) {
+      const product = await storage.getProduct(pid);
+      if (!product) {
+        return res.status(404).json({ error: `Product ${pid} not found` });
+      }
+
+      const trustScore = await storage.getTrustScore(pid);
+      const reviewSummary = await storage.getReviewSummary(pid);
+
+      productsData.push({
+        ...product,
+        trustScore: trustScore ? {
+          score: trustScore.trustScore,
+          label: getTrustLabel(trustScore.trustScore).label,
+          redditMentions: trustScore.redditMentions,
+        } : null,
+        reviewSummary: reviewSummary ? {
+          summaryText: reviewSummary.summaryText,
+          prosHighlights: reviewSummary.prosHighlights,
+          consHighlights: reviewSummary.consHighlights,
+          climateSuitability: reviewSummary.climateSuitability,
+          skinTypeMatch: reviewSummary.skinTypeMatch,
+        } : null,
+      });
+    }
+
+    res.json({ products: productsData });
+  });
+
+  app.post("/api/comparisons/save", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const userId = (req.user as any).claims?.sub;
+    if (!userId) return res.sendStatus(401);
+
+    const input = z.object({
+      productIds: z.array(z.number().int().positive()).min(2).max(4),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ error: "Provide 2-4 product IDs" });
+    }
+
+    const [comparison] = await db.insert(comparisons).values({
+      userId,
+      productIds: input.data.productIds,
+    }).returning();
+
+    res.status(201).json(comparison);
+  });
+
+  // ====== ANALYTICS DASHBOARD ======
+  app.get("/api/analytics/clicks", async (req, res) => {
+    const cacheKey = `analytics:clicks`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
+    const days = Number(req.query.days) || 30;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Total clicks
+    const [totalResult] = await db.select({ count: count() }).from(clicks)
+      .where(gte(clicks.clickedAt, since));
+
+    // Clicks by product (top 10)
+    const clicksByProduct = await db
+      .select({
+        productId: clicks.productId,
+        productName: products.name,
+        brand: products.brand,
+        clickCount: count(),
+      })
+      .from(clicks)
+      .innerJoin(products, eq(clicks.productId, products.id))
+      .where(gte(clicks.clickedAt, since))
+      .groupBy(clicks.productId, products.name, products.brand)
+      .orderBy(desc(count()))
+      .limit(10);
+
+    // Clicks by retailer
+    const clicksByRetailer = await db
+      .select({
+        retailerId: clicks.retailerId,
+        retailerName: retailers.name,
+        clickCount: count(),
+      })
+      .from(clicks)
+      .innerJoin(retailers, eq(clicks.retailerId, retailers.id))
+      .where(gte(clicks.clickedAt, since))
+      .groupBy(clicks.retailerId, retailers.name)
+      .orderBy(desc(count()));
+
+    // Clicks by day (last 30 days)
+    const clicksByDay = await db
+      .select({
+        day: sql<string>`DATE(${clicks.clickedAt})`.as('day'),
+        clickCount: count(),
+      })
+      .from(clicks)
+      .where(gte(clicks.clickedAt, since))
+      .groupBy(sql`DATE(${clicks.clickedAt})`)
+      .orderBy(sql`DATE(${clicks.clickedAt})`);
+
+    const result = {
+      totalClicks: totalResult?.count || 0,
+      period: `${days} days`,
+      topProducts: clicksByProduct,
+      byRetailer: clicksByRetailer,
+      byDay: clicksByDay,
+    };
+
+    cache.set(cacheKey, result, CACHE_TTL.ANALYTICS);
+    res.json(result);
+  });
+
+  app.get("/api/analytics/overview", async (req, res) => {
+    const cacheKey = `analytics:overview`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
+    const [productCount] = await db.select({ count: count() }).from(products);
+    const [userCount] = await db.select({ count: count() }).from(users);
+    const [trackerCount] = await db.select({ count: count() }).from(priceHistory);
+    const [favoriteCount] = await db.select({ count: count() }).from(favorites);
+
+    // Recent clicks (24h)
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [recentClicks] = await db.select({ count: count() }).from(clicks)
+      .where(gte(clicks.clickedAt, dayAgo));
+
+    const result = {
+      totalProducts: productCount?.count || 0,
+      totalUsers: userCount?.count || 0,
+      totalPriceRecords: trackerCount?.count || 0,
+      totalFavorites: favoriteCount?.count || 0,
+      clicksLast24h: recentClicks?.count || 0,
+    };
+
+    cache.set(cacheKey, result, CACHE_TTL.ANALYTICS);
+    res.json(result);
+  });
+
+  // Cache invalidation endpoint
+  app.post("/api/cache/invalidate", isAuthenticated, async (req, res) => {
+    const { pattern } = req.body;
+    if (pattern) {
+      cache.invalidatePattern(pattern);
+    } else {
+      cache.invalidatePattern(""); // clear all
+    }
+    res.json({ success: true, stats: cache.stats() });
   });
 
   // Seed Data — only auto-seed in development. Use `npm run db:seed` for production.
@@ -1653,7 +2174,7 @@ async function seedDatabase() {
         category: prod.category,
         country: prod.country,
         description: prod.description,
-        imageUrl: prod.imageUrl,
+        imageUrl: resolveProductImage(prod.brand, prod.name),
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: youtubeVideoCount,
@@ -1719,7 +2240,7 @@ async function seedDatabase() {
         category: prod.category,
         country: prod.country,
         description: prod.description,
-        imageUrl: prod.imageUrl,
+        imageUrl: resolveProductImage(prod.brand, prod.name),
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: youtubeVideoCount,

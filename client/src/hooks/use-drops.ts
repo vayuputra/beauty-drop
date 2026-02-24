@@ -19,6 +19,22 @@ export function useDrops(country?: string) {
   });
 }
 
+// Server-side search for products
+export function useSearchProducts(query: string, country?: string) {
+  return useQuery({
+    queryKey: ['/api/search', query, country],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('q', query);
+      if (country) params.set('country', country);
+      const res = await fetch(`/api/search?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to search products");
+      return await res.json();
+    },
+    enabled: query.trim().length >= 2,
+  });
+}
+
 // Get single product details
 export function useProduct(id: number) {
   return useQuery({
@@ -295,5 +311,180 @@ export function usePriceHistory(productId: number) {
       return await res.json();
     },
     enabled: !!productId,
+  });
+}
+
+// Discussions hook
+export function useDiscussions(productId: number) {
+  return useQuery({
+    queryKey: ['/api/products', productId, 'discussions'],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${productId}/discussions`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch discussions");
+      return await res.json();
+    },
+    enabled: !!productId,
+  });
+}
+
+// Favorites hooks
+export function useFavoriteIds() {
+  return useQuery({
+    queryKey: ['/api/favorites/ids'],
+    queryFn: async () => {
+      const res = await fetch('/api/favorites/ids', { credentials: "include" });
+      if (!res.ok) return [] as number[];
+      return await res.json() as number[];
+    },
+  });
+}
+
+export function useFavorites() {
+  return useQuery({
+    queryKey: ['/api/favorites'],
+    queryFn: async () => {
+      const res = await fetch('/api/favorites', { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch favorites");
+      return await res.json();
+    },
+  });
+}
+
+export function useToggleFavorite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ productId, isFavorited }: { productId: number; isFavorited: boolean }) => {
+      const res = await fetch(`/api/products/${productId}/favorite`, {
+        method: isFavorited ? "DELETE" : "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to toggle favorite");
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/favorites/ids'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/favorites'] });
+    },
+  });
+}
+
+// Notifications hooks
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['/api/notifications'],
+    queryFn: async () => {
+      const res = await fetch('/api/notifications', { credentials: "include" });
+      if (!res.ok) return [];
+      return await res.json();
+    },
+  });
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery({
+    queryKey: ['/api/notifications/unread-count'],
+    queryFn: async () => {
+      const res = await fetch('/api/notifications/unread-count', { credentials: "include" });
+      if (!res.ok) return { count: 0 };
+      return await res.json();
+    },
+    refetchInterval: 60000, // poll every minute
+  });
+}
+
+export function useMarkNotificationsRead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (ids?: number[]) => {
+      const res = await fetch('/api/notifications/mark-read', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to mark notifications read");
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
+    },
+  });
+}
+
+// Articles hook
+export function useArticles(productId: number) {
+  return useQuery({
+    queryKey: ['/api/products', productId, 'articles'],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${productId}/articles`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch articles");
+      return await res.json();
+    },
+    enabled: !!productId,
+  });
+}
+
+// Product comparison hook
+export function useCompareProducts() {
+  return useMutation({
+    mutationFn: async (productIds: number[]) => {
+      const res = await fetch('/api/compare', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to compare products");
+      return await res.json();
+    },
+  });
+}
+
+// Analytics hooks
+export function useAnalyticsClicks(days: number = 30) {
+  return useQuery({
+    queryKey: ['/api/analytics/clicks', days],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/clicks?days=${days}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch analytics");
+      return await res.json();
+    },
+  });
+}
+
+export function useAnalyticsOverview() {
+  return useQuery({
+    queryKey: ['/api/analytics/overview'],
+    queryFn: async () => {
+      const res = await fetch('/api/analytics/overview', {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch overview");
+      return await res.json();
+    },
+  });
+}
+
+// Weekly digest hook
+export function useWeeklyDigest(country?: string) {
+  return useQuery({
+    queryKey: ['/api/weekly-digest', country],
+    queryFn: async () => {
+      const url = country
+        ? `/api/weekly-digest?country=${country}`
+        : '/api/weekly-digest';
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch digest");
+      return await res.json();
+    },
   });
 }
