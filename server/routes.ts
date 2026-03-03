@@ -3,7 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth, isAuthenticated } from "./auth";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, count } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
@@ -48,9 +48,9 @@ export async function registerRoutes(
     res.json({
       id: userId,
       email: claims.email,
-      firstName: claims.first_name,
-      lastName: claims.last_name,
-      profileImageUrl: claims.profile_image_url,
+      firstName: claims.given_name,
+      lastName: claims.family_name,
+      profileImageUrl: claims.picture,
       country: dbUser?.country || null,
       preferences: dbUser?.preferences || null,
     });
@@ -1090,7 +1090,7 @@ export async function registerRoutes(
     }
   });
 
-  // ====== STANDALONE AUTH (email/password - works without Replit) ======
+  // ====== STANDALONE AUTH (email/password) ======
   app.post("/api/auth/register", async (req, res) => {
     const input = z.object({
       email: z.string().email(),
