@@ -9,6 +9,7 @@ import { eq, desc, sql, and, gte, count } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
+import { isAllowedImageHost } from "./lib/imageProxyDomains";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
@@ -626,67 +627,6 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Missing url parameter' });
       }
 
-      // Validate URL is an image URL from allowed domains
-      const allowedDomains = [
-        'images-static.nykaa.com',
-        'cdn.shopify.com',
-        'www.sephora.com',
-        'sephora.com',
-        'www.sephora.me',
-        'images.ulta.com',
-        'www.ulta.com',
-        'theordinary.com',
-        'www.theordinary.com',
-        'soldejaneiro.com',
-        'www.soldejaneiro.com',
-        'www.glowrecipe.com',
-        'glowrecipe.com',
-        'plumgoodness.com',
-        'images.unsplash.com',
-        'images.glossier.com',
-        'www.glossier.com',
-        'www.rarebeauty.com',
-        'rarebeauty.com',
-        'www.clinique.com',
-        'clinique.com',
-        'www.cosrx.com',
-        'cosrx.com',
-        'beminimalist.co',
-        'www.tirabeauty.com',
-        'tirabeauty.com',
-        'www.sugarcosmetics.com',
-        'sugarcosmetics.com',
-        'www.dotandkey.com',
-        'dotandkey.com',
-        'm.media-amazon.com',
-        'images-na.ssl-images-amazon.com',
-        'www.maybelline.com',
-        'maybelline.com',
-        'www.maybelline.co.in',
-        'maybelline.co.in',
-        'www.lakmeindia.com',
-        'lakmeindia.com',
-        'www.forestessentialsindia.com',
-        'forestessentialsindia.com',
-        'www.nykaa.com',
-        'nykaa.com',
-        'www.purplle.com',
-        'purplle.com',
-        'www.myntra.com',
-        'myntra.com',
-        'assets.myntassets.com',
-        'www.kaybeauty.in',
-        'kaybeauty.in',
-        'www.sephora.com',
-        'sephora.com',
-        'theordinary.com',
-        'www.theordinary.com',
-        'images.amazon.com',
-        'images-static.nykaa.com',
-        'www.summerfridays.com',
-        'summerfridays.com'
-      ];
-
       let urlObj: URL;
       try {
         urlObj = new URL(imageUrl);
@@ -694,10 +634,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Invalid URL' });
       }
 
-      const isAllowed = allowedDomains.some(domain =>
-        urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
-      );
-      if (!isAllowed) {
+      // Only allow https image hosts on our curated allowlist (prevents SSRF).
+      if (urlObj.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Only https URLs are allowed' });
+      }
+      if (!isAllowedImageHost(urlObj.hostname)) {
         return res.status(403).json({ error: 'Domain not allowed' });
       }
 

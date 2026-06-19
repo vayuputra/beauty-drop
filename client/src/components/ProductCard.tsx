@@ -1,9 +1,9 @@
 import { Link } from "wouter";
-import { ArrowUpRight, Heart, ImageOff } from "lucide-react";
+import { ArrowUpRight, Heart } from "lucide-react";
 import { type ProductWithPriceRange } from "@shared/schema";
 import { motion } from "framer-motion";
-import { useState } from "react";
 import { useFavoriteIds, useToggleFavorite } from "@/hooks/use-drops";
+import { ProductImage } from "@/components/ProductImage";
 
 interface ProductCardProps {
   product: ProductWithPriceRange;
@@ -16,26 +16,7 @@ function formatPrice(price: number, currency: string): string {
   return `$${price.toFixed(2)}`;
 }
 
-/** Check if URL is a placeholder (not a real product image) */
-function isPlaceholderImage(url: string | null | undefined): boolean {
-  if (!url) return true;
-  return url.includes('placehold.co') || url.includes('unsplash.com');
-}
-
-function getProxiedImageUrl(url: string): string {
-  if (!url) return '';
-  if (url.includes('placehold.co')) return url;
-  if (url.includes('unsplash.com')) return url;
-  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-}
-
 export function ProductCard({ product }: ProductCardProps) {
-  const [imgError, setImgError] = useState(false);
-  const hasRealImage = !isPlaceholderImage(product.imageUrl) && !imgError;
-  const displayUrl = hasRealImage
-    ? getProxiedImageUrl(product.imageUrl)
-    : '';
-
   const { data: favoriteIds } = useFavoriteIds();
   const toggleFavorite = useToggleFavorite();
   const isFavorited = favoriteIds?.includes(product.id) ?? false;
@@ -56,24 +37,11 @@ export function ProductCard({ product }: ProductCardProps) {
         className="relative bg-white rounded-[1.5rem] overflow-hidden shadow-sm border border-secondary hover:shadow-xl hover:border-primary/50 transition-all duration-300"
       >
         {/* Image Container */}
-        <div className="aspect-[4/5] relative overflow-hidden bg-secondary/30">
-          {hasRealImage ? (
-            <img
-              src={displayUrl}
-              alt={product.name}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              loading="lazy"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-pink-100 p-6 text-center">
-              <ImageOff size={36} className="text-pink-300 mb-3" />
-              <p className="text-lg font-bold text-pink-600">{product.brand}</p>
-              <p className="text-sm text-pink-500 line-clamp-2 mt-1">{product.name}</p>
-              <p className="text-[10px] text-pink-400 mt-3 uppercase tracking-wider">Tap to view product</p>
-            </div>
-          )}
-
+        <ProductImage
+          product={product}
+          className="aspect-[4/5] bg-secondary/30"
+          imgClassName="transition-transform duration-700 group-hover:scale-105"
+        >
           {/* Category Badge */}
           <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
             <span className="text-xs font-bold text-foreground tracking-wide uppercase">
@@ -95,7 +63,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {/* Hover Overlay */}
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300 pointer-events-none" />
-        </div>
+        </ProductImage>
 
         {/* Content */}
         <div className="p-5">

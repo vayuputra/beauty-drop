@@ -124,3 +124,17 @@
     );
   }
 }
+
+/* Accessibility: respect users who prefer reduced motion. Disables the large
+   entrance/scale animations for anyone with vestibular sensitivity while keeping
+   the app fully functional. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

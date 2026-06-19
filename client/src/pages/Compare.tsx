@@ -7,12 +7,7 @@ import { ArrowLeft, Plus, X, GitCompareArrows, Star } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-
-function getProxiedImageUrl(url: string): string {
-  if (!url) return '';
-  if (url.includes('placehold.co') || url.includes('unsplash.com')) return url;
-  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-}
+import { ProductImage } from "@/components/ProductImage";
 
 export default function Compare() {
   const { data: user } = useUser();
@@ -73,11 +68,7 @@ export default function Compare() {
                     >
                       <X size={12} />
                     </button>
-                    <img
-                      src={getProxiedImageUrl(prod.imageUrl)}
-                      alt={prod.name}
-                      className="w-12 h-12 rounded-lg object-cover mb-1"
-                    />
+                    <ProductImage product={prod} className="w-12 h-12 rounded-lg mb-1" />
                     <p className="text-xs font-medium text-center line-clamp-2">{prod.name}</p>
                     <p className="text-[10px] text-muted-foreground">{prod.brand}</p>
                   </>
@@ -135,11 +126,7 @@ export default function Compare() {
                         }`}
                         onClick={() => toggleProduct(product.id)}
                       >
-                        <img
-                          src={getProxiedImageUrl(product.imageUrl)}
-                          alt={product.name}
-                          className="w-12 h-12 rounded-lg object-cover"
-                        />
+                        <ProductImage product={product} className="w-12 h-12 rounded-lg flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{product.name}</p>
                           <p className="text-xs text-muted-foreground">{product.brand} · {product.category}</p>
@@ -168,11 +155,7 @@ export default function Compare() {
             <div className="grid grid-cols-2 gap-3">
               {comparisonData.map((product: any) => (
                 <div key={product.id} className="bg-card rounded-xl border p-3">
-                  <img
-                    src={getProxiedImageUrl(product.imageUrl)}
-                    alt={product.name}
-                    className="w-full aspect-square rounded-lg object-cover mb-2"
-                  />
+                  <ProductImage product={product} className="w-full aspect-square rounded-lg mb-2" />
                   <h4 className="text-sm font-semibold line-clamp-2">{product.name}</h4>
                   <p className="text-xs text-muted-foreground mb-2">{product.brand}</p>
 

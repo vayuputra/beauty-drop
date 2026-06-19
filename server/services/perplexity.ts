@@ -160,7 +160,7 @@ Only return the JSON array, no other text.`;
 // No more generic Unsplash fallbacks — they look like real product images but aren't.
 // We return null when we can't find the real image, and let the frontend show a clear placeholder.
 
-const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
+export const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
   'rare beauty soft pinch liquid blush': {
     url: 'https://www.sephora.com/productimages/sku/s2514168-main-zoom.jpg',
     source: 'Sephora'
@@ -197,10 +197,6 @@ const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
     url: 'https://m.media-amazon.com/images/I/51S9IbhvtaL._SL1100_.jpg',
     source: 'Amazon'
   },
-  'minimalist vitamin c 10% face serum': {
-    url: 'https://m.media-amazon.com/images/I/51Cv+PShgjL._SL1100_.jpg',
-    source: 'Amazon'
-  },
   'minimalist hydra boost moisturizer': {
     url: 'https://m.media-amazon.com/images/I/51kl9cIU6BL._SL1100_.jpg',
     source: 'Amazon'
@@ -217,10 +213,6 @@ const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
     url: 'https://m.media-amazon.com/images/I/51Y3DCBWMVL._SL1500_.jpg',
     source: 'Amazon'
   },
-  'lakme nude nail enamel collection': {
-    url: 'https://m.media-amazon.com/images/I/71+7aK7oJqL._SL1500_.jpg',
-    source: 'Amazon'
-  },
   'forest essentials kumkumadi tailam face oil': {
     url: 'https://m.media-amazon.com/images/I/61E0WKRdX6L._SL1500_.jpg',
     source: 'Amazon'
@@ -234,29 +226,13 @@ const KNOWN_PRODUCT_IMAGES: Record<string, { url: string; source: string }> = {
     source: 'Amazon'
   },
   // Indian Market additions
-  'mamaearth ubtan face wash': {
-    url: 'https://images.amazon.com/images/P/B093HB4HVR.01.jpg',
-    source: 'Amazon India'
-  },
   'maybelline fit me foundation': {
     url: 'https://images-static.nykaa.com/media/catalog/product/a/9/a9e9d6aNYKAC00003439_1.jpg',
     source: 'Nykaa'
   },
-  'lakme absolute blur perfect primer': {
-    url: 'https://m.media-amazon.com/images/I/51wXkYtVzKL._SL1000_.jpg',
-    source: 'Amazon India'
-  },
   'nykaa so matte lipstick': {
     url: 'https://images-static.nykaa.com/media/catalog/product/5/3/5391500003920_1_1.jpg',
     source: 'Nykaa'
-  },
-  'neutrogena hydro boost water gel': {
-    url: 'https://m.media-amazon.com/images/I/518+d3F+GqL._SL1000_.jpg',
-    source: 'Amazon India'
-  },
-  'cetaphil gentle skin cleanser': {
-    url: 'https://m.media-amazon.com/images/I/61+y+.L._SL1500_.jpg',
-    source: 'Amazon India'
   },
   'summer fridays lip butter balm': {
     url: 'https://www.sephora.com/productimages/sku/s2539082-main-zoom.jpg',
