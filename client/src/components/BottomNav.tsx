@@ -8,7 +8,7 @@ export function BottomNav() {
   const NavItem = ({ href, icon: Icon, label }: { href: string; icon: any; label: string }) => {
     const isActive = location === href;
     return (
-      <Link href={href} className="flex-1">
+      <Link href={href} className="flex-1" aria-label={label} aria-current={isActive ? "page" : undefined}>
         <div className={clsx(
           "flex flex-col items-center justify-center py-3 px-2 cursor-pointer transition-all duration-300",
           isActive ? "text-accent" : "text-muted-foreground hover:text-foreground"

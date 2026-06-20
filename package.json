@@ -8,6 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "audit:benchmarks": "tsx script/audit.ts",
     "db:push": "drizzle-kit push",
     "android:sync": "npx cap sync android",
     "android:build": "npx vite build && npx cap sync android",

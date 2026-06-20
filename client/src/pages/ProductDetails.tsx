@@ -1,26 +1,15 @@
 import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
 import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper, ImageOff } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
 import { ReviewSummary } from "@/components/ReviewSummary";
+import { ProductImage } from "@/components/ProductImage";
 import { useUser } from "@/hooks/use-user";
-
-function isPlaceholderImage(url: string | null | undefined): boolean {
-  if (!url) return true;
-  return url.includes('placehold.co') || url.includes('unsplash.com');
-}
-
-function getProxiedImageUrl(url: string): string {
-  if (!url) return '';
-  if (url.includes('placehold.co')) return url;
-  if (url.includes('unsplash.com')) return url;
-  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-}
+import { useToast } from "@/hooks/use-toast";
 
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
@@ -30,8 +19,7 @@ export default function ProductDetails() {
   const trackClick = useTrackClick();
   const refreshInfluencers = useRefreshInfluencers();
   const refreshImage = useRefreshImage();
-  const [imgError, setImgError] = useState(false);
-  
+
   const { data: trustScoreData, isLoading: trustLoading } = useTrustScore(id);
   const calculateTrustScore = useCalculateTrustScore();
   const { data: reviewSummaryData, isLoading: reviewLoading } = useReviewSummary(id);
@@ -45,6 +33,7 @@ export default function ProductDetails() {
   const { data: favoriteIds } = useFavoriteIds();
   const toggleFavorite = useToggleFavorite();
   const isFavorited = favoriteIds?.includes(id) ?? false;
+  const { toast } = useToast();
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
@@ -63,13 +52,27 @@ export default function ProductDetails() {
   };
 
   const handleRefreshImage = async () => {
-    setImgError(false);
     await refreshImage.mutateAsync(product.id);
     refetch();
   };
 
-  const hasRealImage = !isPlaceholderImage(product.imageUrl) && !imgError;
-  const imageUrl = hasRealImage ? getProxiedImageUrl(product.imageUrl) : '';
+  const handleShare = async () => {
+    const shareData = {
+      title: `${product.brand} ${product.name}`,
+      text: `Check out ${product.name} by ${product.brand} on Beauty Drop ✨`,
+      url: window.location.href,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareData.url);
+        toast({ title: "Link copied!", description: "Share it with your friends ✨" });
+      }
+    } catch {
+      // User dismissed the share sheet — no action needed.
+    }
+  };
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -122,6 +125,13 @@ export default function ProductDetails() {
           >
             <Heart size={18} className={isFavorited ? "text-red-500 fill-red-500" : "text-foreground"} />
           </button>
+          <button
+            onClick={handleShare}
+            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
+            aria-label="Share this product"
+          >
+            <Share2 size={18} className="text-foreground" />
+          </button>
           <Button
             variant="ghost"
             size="icon"
@@ -134,24 +144,8 @@ export default function ProductDetails() {
           </Button>
         </div>
         
-        {hasRealImage ? (
-          <img
-            src={imageUrl}
-            alt={product.name}
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-pink-100 p-8 text-center">
-            <ImageOff size={48} className="text-pink-300 mb-4" />
-            <p className="text-2xl font-bold text-pink-600">{product.brand}</p>
-            <p className="text-base text-pink-500 mt-2 max-w-[250px]">{product.name}</p>
-            <p className="text-xs text-pink-400 mt-4">
-              Tap the refresh button to search for the product image
-            </p>
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-90" />
+        <ProductImage product={product} priority className="w-full h-full" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-90 pointer-events-none" />
       </div>
 
       <div className="max-w-md mx-auto px-6 -mt-24 relative z-10">
