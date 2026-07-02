@@ -9,7 +9,10 @@ async function buildForVercel() {
   console.log("Building client...");
   await viteBuild();
 
-  // 2. Bundle API serverless function with esbuild → api/index.js
+  // 2. Bundle API serverless function with esbuild → dist/server/index.js
+  // (api/index.js is a committed thin wrapper that re-exports this bundle;
+  // vercel.json's `functions` pattern is validated before the build runs,
+  // so the file in api/ must exist in the repo.)
   console.log("Building API serverless function...");
 
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
@@ -24,7 +27,7 @@ async function buildForVercel() {
     platform: "node",
     bundle: true,
     format: "esm",
-    outfile: "api/index.js",
+    outfile: "dist/server/index.js",
     target: "node18",
     alias: {
       "@shared": "./shared",
