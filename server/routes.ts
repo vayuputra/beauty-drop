@@ -23,6 +23,20 @@ import { buildFeed, interestCategories, loadFeedSignals } from "./services/feed"
 import type { ProductWithPriceRange } from "@shared/schema";
 import { checkPricesForAllTrackers } from "./services/priceChecker";
 import { isValidCronRequest } from "./lib/cron";
+import { isDataKeyConfigured } from "./lib/crypto";
+import { checkoutModeFor } from "./checkout/plan";
+import { createAddressSchema } from "./checkout/address";
+import {
+  CheckoutError,
+  cancelCheckoutJob,
+  createAddress,
+  createCheckoutJob,
+  deleteAddress,
+  getCheckoutJob,
+  listAddresses,
+  listCheckoutJobs,
+  openCheckoutJob,
+} from "./checkout/service";
 import { runJob, recentRuns, listBrandSources, JOB_NAMES, type JobName } from "./ingest/jobs";
 import { isGoogleShoppingConfigured } from "./ingest/googleShopping";
 import { isYouTubeConfigured } from "./ingest/youtube";
@@ -161,11 +175,109 @@ export async function registerRoutes(
     const cached = cache.get<any>(cacheKey);
     if (cached) return res.json(cached);
 
-    const product = await storage.getProduct(productId);
-    if (!product) return res.sendStatus(404);
+    const found = await storage.getProduct(productId);
+    if (!found) return res.sendStatus(404);
 
+    // Tell the client, per seller, whether the agent can prepare the cart.
+    const product = {
+      ...found,
+      offers: found.offers.map((o) => ({
+        ...o,
+        checkoutMode: checkoutModeFor(o, found, found.variants.length > 0),
+      })),
+    };
     cache.set(cacheKey, product, CACHE_TTL.PRODUCT);
     res.json(product);
+  });
+
+  // ====== ADDRESSES & CHECKOUT AGENT ======
+  const checkoutErrors = (res: any, err: unknown) => {
+    if (err instanceof CheckoutError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  };
+
+  app.get("/api/addresses", isAuthenticated, async (req, res) => {
+    if (!isDataKeyConfigured()) return res.status(503).json({ error: "Saved addresses aren't available yet" });
+    res.json(await listAddresses(getUserId(req)!));
+  });
+
+  app.post("/api/addresses", isAuthenticated, async (req, res) => {
+    if (!isDataKeyConfigured()) return res.status(503).json({ error: "Saved addresses aren't available yet" });
+    const parsed = createAddressSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return res.status(400).json({ error: issue.message, field: issue.path[issue.path.length - 1] });
+    }
+    try {
+      res.status(201).json(await createAddress(getUserId(req)!, parsed.data));
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
+  });
+
+  app.delete("/api/addresses/:id", isAuthenticated, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid address" });
+    try {
+      await deleteAddress(getUserId(req)!, id);
+      res.json({ success: true });
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
+  });
+
+  app.post("/api/checkout/jobs", isAuthenticated, async (req, res) => {
+    const parsed = z.object({
+      offerId: z.number().int().positive(),
+      variantId: z.number().int().positive().nullable().optional(),
+      quantity: z.number().int().min(1).max(10).optional(),
+      addressId: z.number().int().positive().nullable().optional(),
+      shareAddress: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    try {
+      res.status(201).json(await createCheckoutJob(getUserId(req)!, parsed.data));
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
+  });
+
+  app.get("/api/checkout/jobs", isAuthenticated, async (req, res) => {
+    res.json(await listCheckoutJobs(getUserId(req)!));
+  });
+
+  app.get("/api/checkout/jobs/:id", isAuthenticated, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid job" });
+    try {
+      res.json(await getCheckoutJob(getUserId(req)!, id));
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
+  });
+
+  // Redirects to the seller's checkout. The URL (which can carry the address) is built here and never stored.
+  app.get("/api/checkout/jobs/:id/open", isAuthenticated, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid job" });
+    try {
+      const url = await openCheckoutJob(getUserId(req)!, id);
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.setHeader("Cache-Control", "no-store");
+      res.redirect(302, url);
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
+  });
+
+  app.post("/api/checkout/jobs/:id/cancel", isAuthenticated, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid job" });
+    try {
+      res.json(await cancelCheckoutJob(getUserId(req)!, id));
+    } catch (err) {
+      checkoutErrors(res, err);
+    }
   });
 
   // Analytics

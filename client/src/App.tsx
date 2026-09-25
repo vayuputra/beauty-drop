@@ -22,6 +22,7 @@ const ComparePage = lazy(() => import("@/pages/Compare"));
 const AnalyticsPage = lazy(() => import("@/pages/Analytics"));
 const DigestPage = lazy(() => import("@/pages/Digest"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
+const AddressesPage = lazy(() => import("@/pages/Addresses"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 /** Warm the product screen's code before the first tap on a product. */
@@ -44,6 +45,7 @@ function Router() {
         <Route path="/analytics" component={AnalyticsPage} />
         <Route path="/digest" component={DigestPage} />
         <Route path="/admin" component={AdminPage} />
+        <Route path="/addresses" component={AddressesPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

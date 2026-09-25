@@ -1,6 +1,7 @@
 import { db } from "./db";
-import { storage } from "./storage";
-import { products, retailers, productOffers } from "@shared/schema";
+import { isNull, sql } from "drizzle-orm";
+import { products, productOffers } from "@shared/schema";
+import { findOrCreateRetailer } from "./ingest/store";
 import { resolveProductImage } from "./services/perplexity";
 
 /**
@@ -12,66 +13,34 @@ import { resolveProductImage } from "./services/perplexity";
  * pipeline. Run with `npm run db:seed`.
  */
 export async function seedDatabase() {
-  const usProducts = await storage.getProductsByCountry('US');
-  if (usProducts.length === 0) {
+  // Demo products are the ones not created by an ingestion source.
+  const [{ demoCount }] = await db
+    .select({ demoCount: sql<number>`count(*)::int` })
+    .from(products)
+    .where(isNull(products.sourceKey));
+  if (demoCount === 0) {
     console.log("Seeding Database...");
     
     // Create Retailers
-    const [sephora] = await db.insert(retailers).values({
-      name: "Sephora",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Sephora"
-    }).returning();
+    const sephora = await findOrCreateRetailer({ name: "Sephora", country: "US" });
 
-    const [ulta] = await db.insert(retailers).values({
-      name: "Ulta Beauty",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Ulta"
-    }).returning();
+    const ulta = await findOrCreateRetailer({ name: "Ulta Beauty", country: "US" });
 
-    const [nykaa] = await db.insert(retailers).values({
-      name: "Nykaa",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/fc2779/ffffff?text=Nykaa"
-    }).returning();
+    const nykaa = await findOrCreateRetailer({ name: "Nykaa", country: "IN" });
 
-    const [purplle] = await db.insert(retailers).values({
-      name: "Purplle",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/8b5cf6/ffffff?text=Purplle"
-    }).returning();
+    const purplle = await findOrCreateRetailer({ name: "Purplle", country: "IN" });
 
     // Additional India retailers for monetization
-    const [amazonIn] = await db.insert(retailers).values({
-      name: "Amazon India",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
-    }).returning();
+    const amazonIn = await findOrCreateRetailer({ name: "Amazon India", country: "IN" });
 
-    const [myntra] = await db.insert(retailers).values({
-      name: "Myntra",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/ff3f6c/ffffff?text=Myntra"
-    }).returning();
+    const myntra = await findOrCreateRetailer({ name: "Myntra", country: "IN" });
 
-    const [tataCliq] = await db.insert(retailers).values({
-      name: "Tata CLiQ",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/e91e63/ffffff?text=TataCLiQ"
-    }).returning();
+    const tataCliq = await findOrCreateRetailer({ name: "Tata CLiQ", country: "IN" });
 
-    const [sephoraIn] = await db.insert(retailers).values({
-      name: "Sephora India",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/000000/ffffff?text=Sephora"
-    }).returning();
+    const sephoraIn = await findOrCreateRetailer({ name: "Sephora India", country: "IN" });
 
     // Additional US retailers
-    const [amazonUs] = await db.insert(retailers).values({
-      name: "Amazon",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
-    }).returning();
+    const amazonUs = await findOrCreateRetailer({ name: "Amazon", country: "US" });
 
     // US demo products
     const usProductData = [

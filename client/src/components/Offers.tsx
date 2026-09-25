@@ -1,9 +1,17 @@
 import { useState } from "react";
-import { Bell, BellRing, ChevronUp, ExternalLink } from "lucide-react";
+import { Bell, BellRing, ChevronUp, ExternalLink, ShoppingBag } from "lucide-react";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { formatPrice, offerSourceLabel, sortOffers, timeAgoShort } from "@/lib/format";
 
+/** What tapping a seller does: the agent prepares a cart, or we open the seller's page. */
+export function offerAction(offer: OfferView): { label: string; agent: boolean } {
+  if (offer.inStock === false) return { label: "View", agent: false };
+  if (offer.checkoutMode === "cart_permalink" || offer.checkoutMode === "amazon_cart") return { label: "Add to cart", agent: true };
+  return { label: "Buy", agent: false };
+}
+
 export interface OfferView {
+  checkoutMode?: "cart_permalink" | "amazon_cart" | "handoff";
   id: number;
   price: number;
   currency: string;
@@ -34,41 +42,51 @@ function freshness(offer: OfferView): string {
 
 export function OfferRow({ offer, isBest, onBuy }: { offer: OfferView; isBest: boolean; onBuy: (o: OfferView) => void }) {
   const soldOut = offer.inStock === false;
+  const action = offerAction(offer);
+  const button = (
+    <button
+      onClick={() => onBuy(offer)}
+      data-testid={`button-buy-${offer.id}`}
+      className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${
+        action.agent ? "w-full bg-accent text-accent-foreground" : "bg-foreground text-background hover:bg-accent hover:text-accent-foreground"
+      }`}
+      aria-label={`${action.label} at ${offer.retailer.name}`}
+    >
+      {action.agent ? <ShoppingBag size={15} /> : null}
+      {action.label}
+      {action.agent ? null : <ExternalLink size={14} />}
+    </button>
+  );
+
   return (
     <div
       data-testid={`card-offer-${offer.id}`}
-      className={`p-4 rounded-2xl border flex items-center gap-3 transition-colors ${
-        isBest ? "border-accent/50 bg-accent/5" : "border-border bg-card"
-      }`}
+      className={`p-4 rounded-2xl border transition-colors space-y-3 ${isBest ? "border-accent/50 bg-accent/5" : "border-border bg-card"}`}
     >
-      <RetailerLogo name={offer.retailer.name} logoUrl={offer.retailer.logoUrl} />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-foreground truncate">{offer.retailer.name}</p>
-        {soldOut ? (
-          <p className="text-xs font-semibold text-destructive">Sold out</p>
-        ) : (
-          isBest && <p className="text-xs text-accent font-semibold">Best price</p>
-        )}
-        <p className="text-xs text-muted-foreground truncate">
-          {[offerSourceLabel(offer.source, offer.retailer.kind), freshness(offer)].filter(Boolean).join(" · ")}
-        </p>
+      <div className="flex items-center gap-3">
+        <RetailerLogo name={offer.retailer.name} logoUrl={offer.retailer.logoUrl} />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground truncate">{offer.retailer.name}</p>
+          {soldOut ? (
+            <p className="text-xs font-semibold text-destructive">Sold out</p>
+          ) : (
+            isBest && <p className="text-xs text-accent font-semibold">Best price</p>
+          )}
+          <p className="text-xs text-muted-foreground truncate">
+            {[offerSourceLabel(offer.source, offer.retailer.kind), freshness(offer)].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        <div className="text-right">
+          <span className={`block font-bold text-lg ${soldOut ? "text-muted-foreground" : "text-foreground"}`}>
+            {formatPrice(Number(offer.price), offer.currency)}
+          </span>
+          {offer.listPrice != null && offer.listPrice > offer.price && (
+            <span className="block text-xs text-muted-foreground line-through">{formatPrice(Number(offer.listPrice), offer.currency)}</span>
+          )}
+        </div>
+        {!action.agent && button}
       </div>
-      <div className="text-right">
-        <span className={`block font-bold text-lg ${soldOut ? "text-muted-foreground" : "text-foreground"}`}>
-          {formatPrice(Number(offer.price), offer.currency)}
-        </span>
-        {offer.listPrice != null && offer.listPrice > offer.price && (
-          <span className="block text-xs text-muted-foreground line-through">{formatPrice(Number(offer.listPrice), offer.currency)}</span>
-        )}
-      </div>
-      <button
-        onClick={() => onBuy(offer)}
-        data-testid={`button-buy-${offer.id}`}
-        className="bg-foreground text-background px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-1.5"
-        aria-label={`${soldOut ? "View" : "Buy"} at ${offer.retailer.name}`}
-      >
-        {soldOut ? "View" : "Buy"} <ExternalLink size={14} />
-      </button>
+      {action.agent && button}
     </div>
   );
 }
@@ -163,15 +181,21 @@ export function PriceBar({ offers, onBuy, tracking, onToggleAlert, alertBusy }: 
             )}
           </button>
           <AlertToggle tracking={tracking} onToggle={onToggleAlert} busy={alertBusy} />
-          {best && (
-            <button
-              onClick={() => onBuy(best)}
-              className="h-12 px-6 rounded-2xl bg-foreground text-background font-semibold flex items-center gap-2 active:scale-[0.98] transition-transform"
-            >
-              {soldOut ? "View" : `Buy`}
-              <ExternalLink size={15} />
-            </button>
-          )}
+          {best && (() => {
+            const action = offerAction(best);
+            return (
+              <button
+                onClick={() => onBuy(best)}
+                className={`h-12 px-5 rounded-2xl font-semibold flex items-center gap-2 whitespace-nowrap active:scale-[0.98] transition-transform ${
+                  action.agent ? "bg-accent text-accent-foreground" : "bg-foreground text-background"
+                }`}
+              >
+                {action.agent && <ShoppingBag size={17} />}
+                {action.label}
+                {!action.agent && <ExternalLink size={15} />}
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -182,7 +206,14 @@ export function PriceBar({ offers, onBuy, tracking, onToggleAlert, alertBusy }: 
             <DrawerDescription>{sorted.length} {sorted.length === 1 ? "seller" : "sellers"}, cheapest in stock first</DrawerDescription>
           </DrawerHeader>
           <div className="px-4 overflow-y-auto" style={{ paddingBottom: "calc(var(--safe-area-bottom) + 24px)" }}>
-            <OffersList offers={offers} onBuy={onBuy} />
+            <OffersList
+              offers={offers}
+              onBuy={(o) => {
+                // Close this sheet first so the checkout sheet doesn't stack on top of it.
+                setOpen(false);
+                setTimeout(() => onBuy(o), 250);
+              }}
+            />
           </div>
         </DrawerContent>
       </Drawer>

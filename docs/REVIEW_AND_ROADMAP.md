@@ -312,6 +312,28 @@ This is the feature that sets the product apart, and the one with the most risk.
 - Server rendering of product pages for SEO and link previews.
 - The iOS project has never been compiled; that needs Xcode on a Mac.
 
+## Phase 3 status (2026-09-25)
+
+**Done: checkout agent v1 ("Add to cart"; stops before payment)**
+- **Shopify brand stores:** cart permalink with the exact variant and quantity. The store's documented `checkout[...]` parameters pre-fill email and shipping address, but only when the user consents for that order. The user lands on the brand's own checkout with only payment left.
+- **Amazon:** the Associates add-to-cart link, with no automation. Other sellers open the seller's page.
+- **Live re-check:** before building the cart, the agent re-checks price and stock with the store (`/products/<handle>.js`). A price change is shown as a warning, and a sold-out shade fails clearly.
+- **Jobs and audit log:** `checkout_jobs` moves through preparing → ready_for_payment → handed_off (or failed / cancelled). `checkout_steps` is append-only and holds no personal data. Users see it as "What the agent did".
+- **Addresses:** `user_addresses` with AES-256-GCM encryption at rest, India PIN / US ZIP / state / phone validation, up to 10 per user, and a default address. Deleting an address unlinks it from jobs.
+- **Payment guard:** a tested rule for the coming browser agent that blocks "Place order" / "Pay" buttons, card, UPI and OTP fields, `cc-*` autocomplete, gateways and order-submission URLs. Every hand-off URL also passes through it.
+- **UI:**
+  - "Add to cart" on eligible sellers and in the price bar.
+  - A checkout sheet (shade, quantity, address, consent, then the live checklist and "Continue to checkout").
+  - "Ready to pay" carts in Bag.
+  - An Addresses screen under You.
+
+**Not verified live:** Shopify's cart permalink pre-fill and the `.js` endpoint follow Shopify's documentation. Amazon's add-to-cart link follows the Associates docs. None of these could be called from the build sandbox, so they're tested against recorded responses.
+
+**Next (Phase 4):**
+- A browser agent for Nykaa, Sephora and Ulta, using the payment guard.
+- Payment handoff on mobile, via an in-app browser carrying the agent's session.
+- Retries and monitoring.
+
 ## 6. Phased plan
 
 | Phase | Scope | Outcome |

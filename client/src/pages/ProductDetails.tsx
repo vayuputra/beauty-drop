@@ -30,7 +30,8 @@ import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { ProductImage } from "@/components/ProductImage";
 import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
 import { ReviewSummary } from "@/components/ReviewSummary";
-import { OffersPanel, PriceBar, type OfferView } from "@/components/Offers";
+import { OffersPanel, PriceBar, offerAction, type OfferView } from "@/components/Offers";
+import { CheckoutSheet } from "@/components/CheckoutSheet";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { apiUrl } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
@@ -138,6 +139,7 @@ export default function ProductDetails() {
   const [slide, setSlide] = useState(0);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [playing, setPlaying] = useState<any | null>(null);
+  const [checkoutOffer, setCheckoutOffer] = useState<OfferView | null>(null);
   // Give the floating controls a backdrop once the photos scroll away.
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -175,6 +177,14 @@ export default function ProductDetails() {
 
   const handleBuy = (offer: OfferView) => {
     haptic("medium");
+    if (offerAction(offer).agent) {
+      if (!user) {
+        toast({ title: "Sign in to use Add to cart", description: "We'll keep your bag and addresses safe." });
+        return;
+      }
+      setCheckoutOffer(offer);
+      return;
+    }
     // The server records the click and redirects to the retailer (with its app deep link where supported).
     window.open(apiUrl(`/api/go/${offer.id}`), "_blank", "noopener");
   };
@@ -503,6 +513,16 @@ export default function ProductDetails() {
         tracking={!!tracker}
         onToggleAlert={handleToggleAlert}
         alertBusy={createPriceTracker.isPending || deletePriceTracker.isPending}
+      />
+
+      <CheckoutSheet
+        open={!!checkoutOffer}
+        onOpenChange={(o) => !o && setCheckoutOffer(null)}
+        offer={checkoutOffer}
+        variants={variants}
+        initialVariantId={selectedVariantId}
+        country={product.country === "IN" ? "IN" : "US"}
+        productName={product.name}
       />
 
       <Drawer open={!!playing} onOpenChange={(o) => !o && setPlaying(null)}>

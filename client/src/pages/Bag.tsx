@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { BellRing, Heart, ShoppingBag, X } from "lucide-react";
+import { BellRing, ChevronDown, ExternalLink, Heart, ShoppingBag, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { openCheckout, useCancelCheckoutJob, useCheckoutJobs } from "@/hooks/use-checkout";
+import { JobSteps, priceChanged } from "@/components/CheckoutSheet";
 import { useUser } from "@/hooks/use-user";
 import { useDeletePriceTracker, useFavorites, usePriceTrackers } from "@/hooks/use-drops";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +21,9 @@ export default function BagPage() {
   const { data: favorites, isLoading } = useFavorites();
   const { data: trackers } = usePriceTrackers();
   const deleteTracker = useDeletePriceTracker();
+  const { data: jobs } = useCheckoutJobs(!!user);
+  const cancelJob = useCancelCheckoutJob();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -27,7 +34,8 @@ export default function BagPage() {
   if (userLoading || !user) return <div className="min-h-screen bg-background"><Loader /></div>;
 
   const alerts = (trackers ?? []).filter((t: any) => t.isActive !== false && t.product);
-  const empty = !isLoading && (favorites?.length ?? 0) === 0 && alerts.length === 0;
+  const carts = (jobs ?? []).filter((j) => j.status === "ready_for_payment" || j.status === "handed_off");
+  const empty = !isLoading && (favorites?.length ?? 0) === 0 && alerts.length === 0 && carts.length === 0;
 
   return (
     <div className="min-h-screen bg-background pb-28 lg:pb-12">
@@ -35,7 +43,7 @@ export default function BagPage() {
         <div className="max-w-md md:max-w-3xl lg:max-w-6xl mx-auto px-5 pt-5 pb-3 flex items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground">Bag</h1>
-            <p className="text-sm text-muted-foreground">Saved products and price alerts</p>
+            <p className="text-sm text-muted-foreground">Carts, price alerts and saved products</p>
           </div>
           <TopNav />
         </div>
@@ -57,6 +65,71 @@ export default function BagPage() {
           </div>
         ) : (
           <>
+            {carts.length > 0 && (
+              <section className="space-y-3">
+                <div>
+                  <h2 className="font-display text-2xl font-bold flex items-center gap-2">
+                    <ShoppingBag size={20} className="text-accent" /> Ready to pay
+                  </h2>
+                  <p className="text-sm text-muted-foreground">Carts the agent prepared. You pay on each store&apos;s checkout.</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {carts.map((job) => {
+                    const unit = job.confirmedPrice ?? job.quotedPrice;
+                    return (
+                      <div key={job.id} className="min-w-0 rounded-2xl border border-border bg-card p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          {job.product && (
+                            <Link href={`/product/${job.product.id}`} className="flex-shrink-0">
+                              <ProductImage fallbackLabels={false} product={job.product as any} className="h-14 w-14 rounded-xl bg-secondary" />
+                            </Link>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">{job.product?.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {job.quantity} × at {job.retailerName}
+                              {unit != null && ` · ${formatPrice(unit * job.quantity, job.currency)}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {job.status === "handed_off" ? "Opened" : "Prepared"} {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
+                              {priceChanged(job) && <span className="text-amber-600"> · price changed</span>}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              haptic();
+                              cancelJob.mutate(job.id);
+                            }}
+                            className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary"
+                            aria-label={`Remove ${job.product?.name ?? "cart"} from your bag`}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => {
+                            haptic("medium");
+                            openCheckout(job.id, queryClient);
+                          }}
+                          className="w-full py-2.5 rounded-xl bg-accent text-accent-foreground text-sm font-semibold flex items-center justify-center gap-2"
+                        >
+                          Continue to {job.retailerName} checkout <ExternalLink size={14} />
+                        </button>
+                        <details className="group">
+                          <summary className="cursor-pointer list-none text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                            What the agent did <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+                          </summary>
+                          <div className="pt-3">
+                            <JobSteps steps={job.steps} />
+                          </div>
+                        </details>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {alerts.length > 0 && (
               <section className="space-y-3">
                 <h2 className="font-display text-2xl font-bold flex items-center gap-2">

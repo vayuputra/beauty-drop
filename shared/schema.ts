@@ -307,6 +307,66 @@ export const comparisons = pgTable("comparisons", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+/**
+ * Shipping addresses. Everything identifying (name, phone, street, city, postcode)
+ * lives in `encrypted` (AES-256-GCM, see server/lib/crypto.ts); only a label and
+ * the country are stored in the clear.
+ */
+export const userAddresses = pgTable("user_addresses", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  label: text("label").notNull(), // "Home", "Work"…
+  country: text("country").notNull(), // 'IN' or 'US'
+  encrypted: text("encrypted").notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_addresses_user").on(table.userId),
+]);
+
+/**
+ * One "get it ready to buy" request. The agent prepares the seller's cart and
+ * stops before payment; the user pays on the seller's own checkout. No card
+ * data and no address text is stored here.
+ */
+export const checkoutJobs = pgTable("checkout_jobs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  offerId: integer("offer_id").notNull().references(() => productOffers.id),
+  variantId: integer("variant_id").references(() => productVariants.id),
+  quantity: integer("quantity").notNull().default(1),
+  addressId: integer("address_id").references(() => userAddresses.id, { onDelete: "set null" }),
+  // How the cart is prepared: "cart_permalink" (Shopify), "amazon_cart", "handoff".
+  strategy: text("strategy").notNull(),
+  // queued → preparing → ready_for_payment → handed_off; or failed / cancelled.
+  status: text("status").notNull(),
+  retailerName: text("retailer_name").notNull(),
+  quotedPrice: doublePrecision("quoted_price"),
+  confirmedPrice: doublePrecision("confirmed_price"),
+  currency: text("currency").notNull(),
+  // The user agreed to share this address with the seller to pre-fill checkout.
+  addressConsentAt: timestamp("address_consent_at"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_checkout_jobs_user").on(table.userId, table.createdAt),
+]);
+
+/** Append-only log of every action taken for a checkout job (no personal data). */
+export const checkoutSteps = pgTable("checkout_steps", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => checkoutJobs.id, { onDelete: "cascade" }),
+  step: text("step").notNull(),
+  status: text("status").notNull(), // "ok" | "warning" | "failed"
+  detail: text("detail"),
+  at: timestamp("at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_checkout_steps_job").on(table.jobId),
+]);
+
 // Relations
 export const productRelations = relations(products, ({ one, many }) => ({
   offers: many(productOffers),
@@ -432,6 +492,9 @@ export type Comparison = typeof comparisons.$inferSelect;
 export type BrandSource = typeof brandSources.$inferSelect;
 export type ProductVariant = typeof productVariants.$inferSelect;
 export type IngestionRun = typeof ingestionRuns.$inferSelect;
+export type UserAddress = typeof userAddresses.$inferSelect;
+export type CheckoutJob = typeof checkoutJobs.$inferSelect;
+export type CheckoutStep = typeof checkoutSteps.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;

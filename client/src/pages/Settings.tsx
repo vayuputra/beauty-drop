@@ -2,7 +2,7 @@ import { useUser, useUpdateUser } from "@/hooks/use-user";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
-import { Database, Globe, Monitor, Moon, Sun, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
+import { Database, Globe, MapPin, Monitor, Moon, Sun, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
 import { clsx } from "clsx";
@@ -78,6 +78,11 @@ export default function Settings() {
               label="Interests" 
               value={`${user.preferences?.interests?.length || 0} selected`}
               onClick={() => setLocation("/onboarding")}
+            />
+            <MenuItem
+              icon={MapPin}
+              label="Addresses"
+              onClick={() => setLocation("/addresses")}
             />
           </div>
         </div>

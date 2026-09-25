@@ -138,6 +138,8 @@ describe.skipIf(!hasDb)("ingestion", () => {
   });
 
   it("compares the newest launch against other sellers first", async () => {
+    // Make this store's product the newest launch in the catalog, whatever else the database holds.
+    await dbm.db.update(schema.products).set({ launchedAt: new Date() }).where(orm.eq(schema.products.sourceKey, `shopify:${domain}:9001`));
     process.env.PRICE_BATCH_SIZE = "1";
     try {
       const runRes = await jobs.runJob("prices", 10_000);

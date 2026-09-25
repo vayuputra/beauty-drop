@@ -69,6 +69,18 @@ export async function createApp(): Promise<{ app: Express; httpServer: Server }>
   app.use("/api/", limiter(300, "Too many requests, please try again later."));
   app.use(["/api/auth/login", "/api/auth/register"], limiter(20, "Too many sign-in attempts. Please try again later."));
   app.use(EXPENSIVE_PATHS, limiter(10, "Rate limit exceeded for this operation. Please try again later."));
+  // Writes only: preparing a cart calls the store; reading your Bag shouldn't count.
+  app.use(
+    "/api/checkout/jobs",
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 40,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => req.method === "GET",
+      message: { error: "Too many checkout requests. Please try again in a few minutes." },
+    }),
+  );
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

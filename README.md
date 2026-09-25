@@ -91,6 +91,23 @@ job, then price alerts). For hourly updates, `.github/workflows/scheduled-jobs.y
 `/api/cron/ingest/:job`. To turn it on, set the repository variable `APP_URL` and the secret
 `CRON_SECRET`.
 
+## Add to cart (checkout agent)
+
+"Add to cart" prepares the seller's cart and **stops before payment**. The user always pays on
+the seller's own checkout, and the app never sees or stores card details.
+
+| Seller | How the cart is prepared |
+|---|---|
+| Brand Shopify store (from launch detection) | Shopify cart permalink with the exact shade and quantity. It pre-fills name, email and shipping address when the user ticks the consent box for that order. |
+| Amazon | Amazon's Associates add-to-cart link (never automated). Uses `AMAZON_ASSOCIATE_TAG_*` if set. |
+| Everyone else | Opens the seller's product page (a browser agent is planned) |
+
+Before building a cart, the agent re-checks the store's live price and stock. Every action is written
+to `checkout_steps`, which the user sees as "What the agent did". Addresses are stored encrypted with
+AES-256-GCM using `ADDRESS_ENCRYPTION_KEY`, which production requires (`openssl rand -base64 32`).
+The cart link carrying the address is built when the user opens it, and it is never stored.
+`server/checkout/paymentGuard.ts` refuses payment steps and payment URLs.
+
 ## Testing
 
 ```bash

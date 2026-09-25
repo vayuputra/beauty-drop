@@ -7,7 +7,7 @@ const TABS: { href: string; icon: LucideIcon; label: string; match: (path: strin
   { href: "/", icon: Sparkles, label: "Today", match: (p) => p === "/" },
   { href: "/search", icon: Search, label: "Explore", match: (p) => p.startsWith("/search") },
   { href: "/bag", icon: ShoppingBag, label: "Bag", match: (p) => p.startsWith("/bag") },
-  { href: "/settings", icon: User, label: "You", match: (p) => ["/settings", "/notifications", "/compare", "/digest", "/admin", "/analytics"].some((r) => p.startsWith(r)) },
+  { href: "/settings", icon: User, label: "You", match: (p) => ["/settings", "/notifications", "/compare", "/digest", "/admin", "/analytics", "/addresses"].some((r) => p.startsWith(r)) },
 ];
 
 export function BottomNav() {
