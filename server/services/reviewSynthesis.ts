@@ -1,10 +1,5 @@
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openai";
 import type { Product, InsertReviewSummary } from "@shared/schema";
-
-const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
-});
 
 interface ReviewSource {
   platform: string;
@@ -66,7 +61,7 @@ Return as JSON:
 Return only valid JSON, no other text.`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },

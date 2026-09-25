@@ -1,10 +1,5 @@
-import OpenAI from "openai";
+import { getOpenAI } from "../lib/openai";
 import type { Product } from "@shared/schema";
-
-const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
-});
 
 interface ImageVerificationResult {
   isAuthentic: boolean;
@@ -19,7 +14,7 @@ export async function verifyProductImage(
   imageUrl: string
 ): Promise<ImageVerificationResult> {
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       messages: [
         {

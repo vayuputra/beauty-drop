@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type InsertClick } from "@shared/routes";
+import { apiFetch } from "@/lib/api";
+import { api, buildUrl } from "@shared/routes";
 
 // Get list of drops (products)
 export function useDrops(country?: string) {
@@ -11,7 +12,7 @@ export function useDrops(country?: string) {
         ? `${api.drops.list.path}?country=${country}`
         : api.drops.list.path;
         
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiFetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch drops");
       return api.drops.list.responses[200].parse(await res.json());
     },
@@ -27,7 +28,7 @@ export function useSearchProducts(query: string, country?: string) {
       const params = new URLSearchParams();
       params.set('q', query);
       if (country) params.set('country', country);
-      const res = await fetch(`/api/search?${params.toString()}`, { credentials: "include" });
+      const res = await apiFetch(`/api/search?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to search products");
       return await res.json();
     },
@@ -41,7 +42,7 @@ export function useProduct(id: number) {
     queryKey: [api.products.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.products.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiFetch(url, { credentials: "include" });
       
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch product");
@@ -54,31 +55,13 @@ export function useProduct(id: number) {
   });
 }
 
-// Track clicks
-export function useTrackClick() {
-  return useMutation({
-    mutationFn: async (data: InsertClick) => {
-      const validated = api.clicks.track.input.parse(data);
-      const res = await fetch(api.clicks.track.path, {
-        method: api.clicks.track.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
-        credentials: "include",
-      });
-      
-      if (!res.ok) throw new Error("Failed to track click");
-      return api.clicks.track.responses[201].parse(await res.json());
-    },
-  });
-}
-
 // Refresh influencers for a product
 export function useRefreshInfluencers() {
   const queryClient = useQueryClient();
   
   return useMutation({
     mutationFn: async (productId: number) => {
-      const res = await fetch(`/api/products/${productId}/refresh-influencers`, {
+      const res = await apiFetch(`/api/products/${productId}/refresh-influencers`, {
         method: "POST",
         credentials: "include",
       });
@@ -98,7 +81,7 @@ export function useRefreshTrending() {
   
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/refresh-trending", {
+      const res = await apiFetch("/api/refresh-trending", {
         method: "POST",
         credentials: "include",
       });
@@ -118,7 +101,7 @@ export function useRefreshImage() {
   
   return useMutation({
     mutationFn: async (productId: number) => {
-      const res = await fetch(`/api/products/${productId}/refresh-image`, {
+      const res = await apiFetch(`/api/products/${productId}/refresh-image`, {
         method: "POST",
         credentials: "include",
       });
@@ -139,7 +122,7 @@ export function useRefreshAllImages() {
   
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/refresh-images", {
+      const res = await apiFetch("/api/refresh-images", {
         method: "POST",
         credentials: "include",
       });
@@ -159,7 +142,7 @@ export function useRefreshPrices() {
   
   return useMutation({
     mutationFn: async (productId: number) => {
-      const res = await fetch(`/api/products/${productId}/refresh-prices`, {
+      const res = await apiFetch(`/api/products/${productId}/refresh-prices`, {
         method: "POST",
         credentials: "include",
       });
@@ -178,7 +161,7 @@ export function useTrustScore(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'trust-score'],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${productId}/trust-score`, {
+      const res = await apiFetch(`/api/products/${productId}/trust-score`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch trust score");
@@ -193,7 +176,7 @@ export function useCalculateTrustScore() {
   
   return useMutation({
     mutationFn: async (productId: number) => {
-      const res = await fetch(`/api/products/${productId}/calculate-trust-score`, {
+      const res = await apiFetch(`/api/products/${productId}/calculate-trust-score`, {
         method: "POST",
         credentials: "include",
       });
@@ -212,7 +195,7 @@ export function useReviewSummary(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'review-summary'],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${productId}/review-summary`, {
+      const res = await apiFetch(`/api/products/${productId}/review-summary`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch review summary");
@@ -227,7 +210,7 @@ export function useGenerateReviewSummary() {
   
   return useMutation({
     mutationFn: async (productId: number) => {
-      const res = await fetch(`/api/products/${productId}/generate-review-summary`, {
+      const res = await apiFetch(`/api/products/${productId}/generate-review-summary`, {
         method: "POST",
         credentials: "include",
       });
@@ -246,7 +229,7 @@ export function usePriceTrackers() {
   return useQuery({
     queryKey: ['/api/price-trackers'],
     queryFn: async () => {
-      const res = await fetch('/api/price-trackers', {
+      const res = await apiFetch('/api/price-trackers', {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch price trackers");
@@ -264,7 +247,7 @@ export function useCreatePriceTracker() {
       targetPrice?: number; 
       notifyOnAnyDrop?: boolean; 
     }) => {
-      const res = await fetch(`/api/products/${productId}/price-tracker`, {
+      const res = await apiFetch(`/api/products/${productId}/price-tracker`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetPrice, notifyOnAnyDrop }),
@@ -285,7 +268,7 @@ export function useDeletePriceTracker() {
   
   return useMutation({
     mutationFn: async (trackerId: number) => {
-      const res = await fetch(`/api/price-trackers/${trackerId}`, {
+      const res = await apiFetch(`/api/price-trackers/${trackerId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -304,7 +287,7 @@ export function usePriceHistory(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'price-history'],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${productId}/price-history`, {
+      const res = await apiFetch(`/api/products/${productId}/price-history`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch price history");
@@ -319,7 +302,7 @@ export function useDiscussions(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'discussions'],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${productId}/discussions`, {
+      const res = await apiFetch(`/api/products/${productId}/discussions`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch discussions");
@@ -334,7 +317,7 @@ export function useFavoriteIds() {
   return useQuery({
     queryKey: ['/api/favorites/ids'],
     queryFn: async () => {
-      const res = await fetch('/api/favorites/ids', { credentials: "include" });
+      const res = await apiFetch('/api/favorites/ids', { credentials: "include" });
       if (!res.ok) return [] as number[];
       return await res.json() as number[];
     },
@@ -345,7 +328,7 @@ export function useFavorites() {
   return useQuery({
     queryKey: ['/api/favorites'],
     queryFn: async () => {
-      const res = await fetch('/api/favorites', { credentials: "include" });
+      const res = await apiFetch('/api/favorites', { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch favorites");
       return await res.json();
     },
@@ -357,7 +340,7 @@ export function useToggleFavorite() {
 
   return useMutation({
     mutationFn: async ({ productId, isFavorited }: { productId: number; isFavorited: boolean }) => {
-      const res = await fetch(`/api/products/${productId}/favorite`, {
+      const res = await apiFetch(`/api/products/${productId}/favorite`, {
         method: isFavorited ? "DELETE" : "POST",
         credentials: "include",
       });
@@ -376,7 +359,7 @@ export function useNotifications() {
   return useQuery({
     queryKey: ['/api/notifications'],
     queryFn: async () => {
-      const res = await fetch('/api/notifications', { credentials: "include" });
+      const res = await apiFetch('/api/notifications', { credentials: "include" });
       if (!res.ok) return [];
       return await res.json();
     },
@@ -387,7 +370,7 @@ export function useUnreadNotificationCount() {
   return useQuery({
     queryKey: ['/api/notifications/unread-count'],
     queryFn: async () => {
-      const res = await fetch('/api/notifications/unread-count', { credentials: "include" });
+      const res = await apiFetch('/api/notifications/unread-count', { credentials: "include" });
       if (!res.ok) return { count: 0 };
       return await res.json();
     },
@@ -400,7 +383,7 @@ export function useMarkNotificationsRead() {
 
   return useMutation({
     mutationFn: async (ids?: number[]) => {
-      const res = await fetch('/api/notifications/mark-read', {
+      const res = await apiFetch('/api/notifications/mark-read', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -421,7 +404,7 @@ export function useArticles(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'articles'],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${productId}/articles`, {
+      const res = await apiFetch(`/api/products/${productId}/articles`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch articles");
@@ -435,7 +418,7 @@ export function useArticles(productId: number) {
 export function useCompareProducts() {
   return useMutation({
     mutationFn: async (productIds: number[]) => {
-      const res = await fetch('/api/compare', {
+      const res = await apiFetch('/api/compare', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productIds }),
@@ -452,7 +435,7 @@ export function useAnalyticsClicks(days: number = 30) {
   return useQuery({
     queryKey: ['/api/analytics/clicks', days],
     queryFn: async () => {
-      const res = await fetch(`/api/analytics/clicks?days=${days}`, {
+      const res = await apiFetch(`/api/analytics/clicks?days=${days}`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch analytics");
@@ -465,7 +448,7 @@ export function useAnalyticsOverview() {
   return useQuery({
     queryKey: ['/api/analytics/overview'],
     queryFn: async () => {
-      const res = await fetch('/api/analytics/overview', {
+      const res = await apiFetch('/api/analytics/overview', {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch overview");
@@ -482,7 +465,7 @@ export function useWeeklyDigest(country?: string) {
       const url = country
         ? `/api/weekly-digest?country=${country}`
         : '/api/weekly-digest';
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiFetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch digest");
       return await res.json();
     },

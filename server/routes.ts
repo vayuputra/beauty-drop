@@ -1,29 +1,46 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, isAuthenticated } from "./auth";
+import { setupAuth, isAuthenticated, isAdmin, getUserId, isAdminUser } from "./auth";
+import { isAdminEmail } from "./auth/identity";
 import { db } from "./db";
-import { eq, desc, sql, and, gte, count } from "drizzle-orm";
+import { eq, desc, sql, and, gte, count, inArray } from "drizzle-orm";
 import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
-import { isAllowedImageHost } from "./lib/imageProxyDomains";
+import { handleImageProxy } from "./lib/imageProxy";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
 import { generateSmartLink } from "./services/deepLinks";
 import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
-import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
+import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth, isPriceFetcherConfigured, updateProductPricesFromFetch } from "./services/priceFetcher";
 import { fetchArticlesForProduct } from "./services/articles";
 import { cache, CACHE_TTL } from "./services/cache";
+import { checkPricesForAllTrackers } from "./services/priceChecker";
+import { isValidCronRequest } from "./lib/cron";
 import bcrypt from "bcryptjs";
 
 function parseProductId(id: string): number | null {
   const parsed = Number(id);
   if (isNaN(parsed) || parsed <= 0 || !Number.isInteger(parsed)) return null;
   return parsed;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** How long AI-derived enrichment is reused before a non-admin request may recompute it. */
+const ENRICHMENT_TTL = {
+  influencers: 24 * HOUR_MS,
+  trustScore: 7 * 24 * HOUR_MS,
+  reviewSummary: 7 * 24 * HOUR_MS,
+} as const;
+
+function isFresh(at: Date | string | null | undefined, ttlMs: number): boolean {
+  if (!at) return false;
+  return Date.now() - new Date(at).getTime() < ttlMs;
 }
 
 export async function registerRoutes(
@@ -33,62 +50,49 @@ export async function registerRoutes(
   // Set up authentication (Passport + Session)
   await setupAuth(app);
 
-  // User Routes - Return merged auth claims + DB user data
+  // Current user profile (identity + preferences), read from the users table.
   app.get(api.user.get.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    
-    const claims = (req.user as any).claims;
-    const userId = claims?.sub;
-    
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
-    
-    // Get DB user data (country, preferences)
+
     const dbUser = await storage.getUser(userId);
-    
-    // Return merged object
+    if (!dbUser) return res.sendStatus(401);
+
     res.json({
-      id: userId,
-      email: claims.email,
-      firstName: claims.given_name,
-      lastName: claims.family_name,
-      profileImageUrl: claims.picture,
-      country: dbUser?.country || null,
-      preferences: dbUser?.preferences || null,
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      country: dbUser.country || null,
+      preferences: dbUser.preferences || null,
+      isAdmin: isAdminEmail(dbUser.email),
     });
   });
 
   app.patch(api.user.update.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    
-    try {
-      const userId = (req.user as any).claims?.sub;
-      if (!userId) return res.sendStatus(401);
-      
-      const input = api.user.update.input.parse(req.body);
-      const user = await storage.updateUser(userId, input);
-      res.json(user);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      throw err;
+    const userId = getUserId(req);
+    if (!userId) return res.sendStatus(401);
+
+    const parsed = api.user.update.input.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
     }
+    const user = await storage.updateUser(userId, parsed.data);
+    res.json(user);
   });
 
-  // Drops / Products Routes - Only return products with influencer mentions
+  // Drops / Products Routes
   app.get(api.drops.list.path, async (req, res) => {
-    // Get country from query param first, then try to fetch from DB based on user
-    let country = req.query.country as string;
-    
-    if (!country && req.isAuthenticated()) {
-      const userId = (req.user as any).claims?.sub;
-      if (userId) {
-        const dbUser = await storage.getUser(userId);
-        country = dbUser?.country || 'US';
-      }
+    let country = typeof req.query.country === "string" ? req.query.country : undefined;
+
+    const userId = getUserId(req);
+    if (!country && userId) {
+      const dbUser = await storage.getUser(userId);
+      country = dbUser?.country || undefined;
     }
-    
-    country = country || 'US';
+
+    country = country === "IN" ? "IN" : "US";
 
     // Check cache first
     const cacheKey = `drops:${country}`;
@@ -103,11 +107,11 @@ export async function registerRoutes(
 
   // Search products
   app.get("/api/search", async (req, res) => {
-    const query = (req.query.q as string || '').trim();
-    if (!query || query.length < 2) {
+    const query = (typeof req.query.q === "string" ? req.query.q : "").trim().slice(0, 100);
+    if (query.length < 2) {
       return res.json([]);
     }
-    const country = req.query.country as string | undefined;
+    const country = req.query.country === "IN" || req.query.country === "US" ? req.query.country : undefined;
 
     const cacheKey = `search:${query}:${country || 'all'}`;
     const cached = cache.get<any>(cacheKey);
@@ -137,7 +141,7 @@ export async function registerRoutes(
   app.post(api.clicks.track.path, async (req, res) => {
     try {
       const input = api.clicks.track.input.parse(req.body);
-      const userId = req.isAuthenticated() ? (req.user as any).claims?.sub : undefined;
+      const userId = getUserId(req);
       await storage.trackClick({
         ...input,
         userId
@@ -150,8 +154,7 @@ export async function registerRoutes(
 
   // Favorites / Wishlist Routes
   app.get("/api/favorites", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const favs = await storage.getUserFavorites(userId);
@@ -159,8 +162,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/favorites/ids", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const favs = await db.select({ productId: favorites.productId })
@@ -170,8 +172,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/products/:id/favorite", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const productId = parseProductId(req.params.id);
@@ -185,8 +186,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/products/:id/favorite", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const productId = parseProductId(req.params.id);
@@ -196,14 +196,24 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  // Refresh Trending - Discover influencers for a specific product
+  // Discover creator mentions for one product. Signed-in users can trigger it, but
+  // results are reused for 24h so repeated taps don't each spend an AI call.
   app.post("/api/products/:id/refresh-influencers", isAuthenticated, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
-    
+
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (isFresh(product.lastInfluencerRefresh, ENRICHMENT_TTL.influencers) && !(await isAdminUser(getUserId(req)))) {
+      return res.json({
+        success: true,
+        cached: true,
+        influencersFound: product.influencers?.length ?? 0,
+        influencers: product.influencers ?? [],
+      });
     }
 
     try {
@@ -241,6 +251,8 @@ export async function registerRoutes(
 
       // Update product's influencer count
       await storage.updateProductInfluencerCount(productId, influencers.length);
+      cache.invalidate(`product:${productId}`);
+      cache.invalidatePattern("drops:");
 
       // Log success
       await db.insert(refreshLogs).values({
@@ -269,8 +281,8 @@ export async function registerRoutes(
     }
   });
 
-  // Refresh product image from official sources
-  app.post("/api/products/:id/refresh-image", isAuthenticated, async (req, res) => {
+  // Refresh product image from official sources (operator tool)
+  app.post("/api/products/:id/refresh-image", isAdmin, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
@@ -292,8 +304,8 @@ export async function registerRoutes(
             console.log(`Image verification failed for ${product.name}: ${verification.issues?.join(', ') || 'low confidence'}`);
           }
         } catch {
-          // If verification service fails, still accept the image (better than nothing)
-          verified = true;
+          // If we cannot verify the image, keep the current one rather than risk a wrong photo.
+          verified = false;
         }
 
         if (verified) {
@@ -315,11 +327,7 @@ export async function registerRoutes(
             verified: true
           });
         } else {
-          // Image found but failed verification — set placeholder instead of wrong image
-          const placeholder = getPlaceholderImage(product.brand, product.name);
-          await storage.updateProductImage(productId, placeholder);
-          cache.invalidate(`product:${productId}`);
-
+          // Image found but not verified — keep the existing image untouched.
           await db.insert(refreshLogs).values({
             productId,
             refreshType: 'image',
@@ -327,15 +335,11 @@ export async function registerRoutes(
             message: `Image from ${imageInfo.source} failed verification`
           });
 
-          res.json({ success: false, message: "Found image but it didn't match the product — placeholder set" });
+          res.json({ success: false, message: "Found an image but could not verify it matches the product; kept the current image" });
         }
       } else {
-        // No image found at all — set a branded placeholder
-        const placeholder = getPlaceholderImage(product.brand, product.name);
-        await storage.updateProductImage(productId, placeholder);
-        cache.invalidate(`product:${productId}`);
-
-        res.json({ success: false, message: "No official image found — placeholder set" });
+        // No image found — keep the current image; the client renders a branded fallback if it fails to load.
+        res.json({ success: false, message: "No official image found; kept the current image" });
       }
     } catch (error) {
       console.error("Error refreshing image:", error);
@@ -343,106 +347,55 @@ export async function registerRoutes(
     }
   });
 
-  // Refresh prices for a product from Python fetcher or simulate price update
+  // Refresh prices for a product from the live price fetcher. Reports honestly:
+  // if no live source is available, nothing is changed and the response says so.
   app.post("/api/products/:id/refresh-prices", isAuthenticated, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
-    
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const lastChecked = product.offers
+      .map((o) => o.lastUpdated)
+      .filter((d): d is Date => !!d)
+      .sort((x, y) => new Date(y).getTime() - new Date(x).getTime())[0] ?? null;
+
+    if (!isPriceFetcherConfigured()) {
+      return res.json({ success: false, updated: 0, message: "Live prices are not available yet", lastChecked });
+    }
+    if (isFresh(lastChecked, 30 * 60 * 1000)) {
+      return res.json({ success: true, updated: 0, cached: true, message: "Prices were checked recently", lastChecked });
     }
 
+    let updated = 0;
     try {
-      // Get current offers
-      const offers = await db.select().from(productOffers).where(eq(productOffers.productId, productId));
-      
-      if (offers.length === 0) {
-        return res.json({ success: false, message: "No offers to refresh" });
-      }
-
-      // Check rate limiting - only allow refresh every 5 minutes per product
-      const lastUpdate = offers[0]?.lastUpdated;
-      if (lastUpdate) {
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-        if (new Date(lastUpdate) > fiveMinutesAgo) {
-          return res.json({ 
-            success: true, 
-            message: "Prices were recently refreshed. Please wait a few minutes.",
-            lastChecked: lastUpdate
-          });
-        }
-      }
-
-      // Try to fetch from Python price fetcher service
-      const pythonFetcherUrl = process.env.PYTHON_FETCHER_URL || 'http://localhost:8000';
-      let updatedOffers = [];
-      
-      try {
-        // Use the correct endpoint that matches Python fetcher's API
-        const fetchResponse = await fetch(`${pythonFetcherUrl}/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            product_name: `${product.brand} ${product.name}`,
-            country: product.country
-          })
-        });
-
-        if (fetchResponse.ok) {
-          const priceData = await fetchResponse.json();
-          if (priceData.price) {
-            // Update the first offer with new price
-            const newPrice = parseFloat(priceData.price);
-            await db.update(productOffers)
-              .set({ price: newPrice, lastUpdated: new Date() })
-              .where(eq(productOffers.id, offers[0].id));
-            
-            // Record price history
-            await db.insert(priceHistory).values({
-              productId,
-              retailerId: offers[0].retailerId,
-              price: newPrice,
-              currency: offers[0].currency
-            });
-
-            updatedOffers.push({ retailerId: offers[0].retailerId, price: newPrice });
-          }
-        }
-      } catch (fetchError) {
-        console.log("Python fetcher not available, simulating price refresh");
-      }
-
-      // If no external update, just mark as checked
-      if (updatedOffers.length === 0) {
-        for (const offer of offers) {
-          await db.update(productOffers)
-            .set({ lastUpdated: new Date() })
-            .where(eq(productOffers.id, offer.id));
-        }
-      }
-
-      await db.insert(refreshLogs).values({
-        productId,
-        refreshType: 'prices',
-        status: 'success',
-        message: `Refreshed ${updatedOffers.length > 0 ? updatedOffers.length : offers.length} offers`
-      });
-
-      res.json({ 
-        success: true, 
-        message: `Prices refreshed for ${offers.length} retailers`,
-        updatedOffers,
-        lastChecked: new Date().toISOString()
-      });
+      updated = await updateProductPricesFromFetch(productId);
     } catch (error) {
-      console.error("Error refreshing prices:", error);
-      res.status(500).json({ error: "Failed to refresh prices" });
+      console.error("Live price fetch failed:", error);
     }
+
+    await db.insert(refreshLogs).values({
+      productId,
+      refreshType: "prices",
+      status: updated > 0 ? "success" : "failed",
+      message: updated > 0 ? `Updated ${updated} offers from live prices` : "No live prices returned",
+    });
+
+    if (updated > 0) {
+      cache.invalidate(`product:${productId}`);
+      cache.invalidatePattern("drops:");
+    }
+
+    res.json({
+      success: updated > 0,
+      updated,
+      message: updated > 0 ? `Updated ${updated} prices` : "Could not get live prices right now",
+      lastChecked: updated > 0 ? new Date().toISOString() : lastChecked,
+    });
   });
 
   // Refresh all data for a product (influencers + image)
-  app.post("/api/products/:id/refresh-all", isAuthenticated, async (req, res) => {
+  app.post("/api/products/:id/refresh-all", isAdmin, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
@@ -503,7 +456,7 @@ export async function registerRoutes(
   });
 
   // Refresh all products (batch operation)
-  app.post("/api/refresh-trending", isAuthenticated, async (req, res) => {
+  app.post("/api/refresh-trending", isAdmin, async (req, res) => {
     try {
       const allProducts = await storage.getAllProducts();
       const results: { productId: number; name: string; status: string }[] = [];
@@ -556,7 +509,7 @@ export async function registerRoutes(
   });
 
   // Batch refresh all product images
-  app.post("/api/refresh-images", isAuthenticated, async (req, res) => {
+  app.post("/api/refresh-images", isAdmin, async (req, res) => {
     try {
       const allProducts = await storage.getAllProducts();
       const results: { productId: number; name: string; status: string; imageUrl?: string }[] = [];
@@ -618,67 +571,8 @@ export async function registerRoutes(
     }
   });
 
-  // Image Proxy - bypasses hot-linking restrictions by fetching images server-side
-  app.get('/api/image-proxy', async (req, res) => {
-    try {
-      const imageUrl = req.query.url as string;
-      
-      if (!imageUrl) {
-        return res.status(400).json({ error: 'Missing url parameter' });
-      }
-
-      let urlObj: URL;
-      try {
-        urlObj = new URL(imageUrl);
-      } catch {
-        return res.status(400).json({ error: 'Invalid URL' });
-      }
-
-      // Only allow https image hosts on our curated allowlist (prevents SSRF).
-      if (urlObj.protocol !== 'https:') {
-        return res.status(400).json({ error: 'Only https URLs are allowed' });
-      }
-      if (!isAllowedImageHost(urlObj.hostname)) {
-        return res.status(403).json({ error: 'Domain not allowed' });
-      }
-
-      // Fetch the image without referrer header
-      const response = await fetch(imageUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-        }
-      });
-
-      if (!response.ok) {
-        return res.status(response.status).json({ error: 'Failed to fetch image' });
-      }
-
-      const contentType = response.headers.get('content-type') || 'image/jpeg';
-
-      // Validate that the response is actually an image
-      if (!contentType.startsWith('image/')) {
-        return res.status(400).json({ error: 'URL does not point to an image' });
-      }
-
-      const buffer = await response.arrayBuffer();
-
-      // Limit proxy to 10MB images to prevent memory abuse
-      if (buffer.byteLength > 10 * 1024 * 1024) {
-        return res.status(413).json({ error: 'Image too large' });
-      }
-
-      // Set caching headers (cache for 1 day)
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Content-Type', contentType);
-      res.send(Buffer.from(buffer));
-    } catch (error) {
-      console.error('Image proxy error:', error);
-      res.status(500).json({ error: 'Failed to proxy image' });
-    }
-  });
+  // Image proxy: fetches allowlisted product photos server-side (retailer CDNs block hot-linking).
+  app.get("/api/image-proxy", handleImageProxy);
 
   // Discussions route - find Reddit/forum discussions about a product
   app.get("/api/products/:id/discussions", async (req, res) => {
@@ -734,6 +628,12 @@ export async function registerRoutes(
       return res.status(404).json({ error: "Product not found" });
     }
 
+    const existingScore = await storage.getTrustScore(productId);
+    if (existingScore && isFresh(existingScore.lastCalculated, ENRICHMENT_TTL.trustScore) && !(await isAdminUser(getUserId(req)))) {
+      const label = getTrustLabel(existingScore.trustScore);
+      return res.json({ success: true, cached: true, trustScore: existingScore, label: label.label, color: label.color });
+    }
+
     try {
       const trustScoreData = await generateProductTrustScore(product);
       const savedScore = await storage.upsertTrustScore(trustScoreData);
@@ -773,6 +673,11 @@ export async function registerRoutes(
       return res.status(404).json({ error: "Product not found" });
     }
 
+    const existingSummary = await storage.getReviewSummary(productId);
+    if (existingSummary && isFresh(existingSummary.generatedAt, ENRICHMENT_TTL.reviewSummary) && !(await isAdminUser(getUserId(req)))) {
+      return res.json({ success: true, cached: true, reviewSummary: existingSummary });
+    }
+
     try {
       const summaryData = await generateProductReviewSummary(product);
       const savedSummary = await storage.upsertReviewSummary(summaryData);
@@ -789,8 +694,7 @@ export async function registerRoutes(
 
   // Price Tracker Routes
   app.get("/api/price-trackers", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
     
     const trackers = await storage.getUserPriceTrackers(userId);
@@ -798,8 +702,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/products/:id/price-tracker", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const productId = parseProductId(req.params.id);
@@ -818,20 +721,24 @@ export async function registerRoutes(
       return res.status(400).json({ error: "Already tracking this product" });
     }
     
+    const product = await storage.getProduct(productId);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    const prices = product.offers.map((o) => o.price).filter((p) => p > 0);
+
     const tracker = await storage.createPriceTracker({
       userId,
       productId,
       targetPrice: targetPrice || null,
       notifyOnAnyDrop: notifyOnAnyDrop ?? true,
-      isActive: true
+      isActive: true,
+      baselinePrice: prices.length > 0 ? Math.min(...prices) : null,
     });
     
     res.status(201).json(tracker);
   });
 
   app.delete("/api/price-trackers/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     // Verify the tracker belongs to the requesting user
@@ -850,13 +757,13 @@ export async function registerRoutes(
   app.get("/api/products/:id/price-history", async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
-    const limit = Number(req.query.limit) || 30;
+    const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit)) || 30, 1), 365);
     const history = await storage.getPriceHistory(productId, limit);
     res.json(history);
   });
 
   // Image Verification Route
-  app.post("/api/products/:id/verify-image", isAuthenticated, async (req, res) => {
+  app.post("/api/products/:id/verify-image", isAdmin, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
     const product = await storage.getProduct(productId);
@@ -918,12 +825,15 @@ export async function registerRoutes(
   // Redirect with smart deep link
   app.get("/api/go/:offerId", async (req, res) => {
     try {
-      const { offerId } = req.params;
-      
-      const [offer] = await db.select().from(productOffers).where(eq(productOffers.id, Number(offerId)));
+      const offerId = parseProductId(req.params.offerId);
+      if (!offerId) return res.redirect("/");
+
+      const [offer] = await db.select().from(productOffers).where(eq(productOffers.id, offerId));
       if (!offer) {
-        return res.redirect('/');
+        return res.redirect("/");
       }
+
+      await storage.trackClick({ productId: offer.productId, retailerId: offer.retailerId, userId: getUserId(req) });
 
       const [retailer] = await db.select().from(retailers).where(eq(retailers.id, offer.retailerId));
       if (!retailer) {
@@ -965,7 +875,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/weekly-digest/generate", isAuthenticated, async (req, res) => {
+  app.post("/api/weekly-digest/generate", isAdmin, async (req, res) => {
     try {
       const country = req.body.country as string | undefined;
       const digest = await saveWeeklyDigest(country);
@@ -977,7 +887,7 @@ export async function registerRoutes(
   });
 
   // Price Fetcher Integration Routes (Python Service)
-  app.post("/api/prices/fetch", isAuthenticated, async (req, res) => {
+  app.post("/api/prices/fetch", isAdmin, async (req, res) => {
     try {
       const priceFetchInput = z.object({
         productName: z.string().min(1, "productName is required"),
@@ -997,7 +907,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/prices/refresh", isAuthenticated, async (req, res) => {
+  app.post("/api/prices/refresh", isAdmin, async (req, res) => {
     try {
       const priceRefreshInput = z.object({
         productName: z.string().min(1, "productName is required"),
@@ -1031,13 +941,21 @@ export async function registerRoutes(
     }
   });
 
-  // ====== STANDALONE AUTH (email/password) ======
+  // ====== EMAIL/PASSWORD AUTH ======
+  // Uses the same passport session as Google sign-in (req.login regenerates the
+  // session id, preventing session fixation).
+  const credentialsSchema = z.object({
+    email: z.string().email().transform((e) => e.trim().toLowerCase()),
+    password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  });
+
+  const startSession = (req: Request, userId: string) =>
+    new Promise<void>((resolve, reject) => req.login({ id: userId }, (err) => (err ? reject(err) : resolve())));
+
   app.post("/api/auth/register", async (req, res) => {
-    const input = z.object({
-      email: z.string().email(),
-      password: z.string().min(8, "Password must be at least 8 characters"),
-      firstName: z.string().min(1),
-      lastName: z.string().optional(),
+    const input = credentialsSchema.extend({
+      firstName: z.string().trim().min(1).max(100),
+      lastName: z.string().trim().max(100).optional(),
     }).safeParse(req.body);
 
     if (!input.success) {
@@ -1046,7 +964,6 @@ export async function registerRoutes(
 
     const { email, password, firstName, lastName } = input.data;
 
-    // Check if email already exists
     const [existing] = await db.select().from(users).where(eq(users.email, email));
     if (existing) {
       return res.status(409).json({ error: "An account with this email already exists" });
@@ -1060,15 +977,14 @@ export async function registerRoutes(
       lastName: lastName || null,
     }).returning();
 
-    // Set session
-    (req as any).session.userId = user.id;
+    await startSession(req, user.id);
     res.status(201).json({ success: true, user: { id: user.id, email: user.email, firstName: user.firstName } });
   });
 
   app.post("/api/auth/login", async (req, res) => {
     const input = z.object({
-      email: z.string().email(),
-      password: z.string().min(1),
+      email: z.string().email().transform((e) => e.trim().toLowerCase()),
+      password: z.string().min(1).max(200),
     }).safeParse(req.body);
 
     if (!input.success) {
@@ -1078,23 +994,20 @@ export async function registerRoutes(
     const { email, password } = input.data;
     const [user] = await db.select().from(users).where(eq(users.email, email));
 
-    if (!user || !user.passwordHash) {
+    // Compare against a dummy hash when the user doesn't exist so timing doesn't reveal accounts.
+    const hash = user?.passwordHash ?? "$2b$12$C6UzMDM.H6dfI/f/IKcEeO6G3m5vYhLG1o2yXbD1C7p9nP0bQ4jWa";
+    const isValid = await bcrypt.compare(password, hash);
+    if (!user || !user.passwordHash || !isValid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const isValid = await bcrypt.compare(password, user.passwordHash);
-    if (!isValid) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    (req as any).session.userId = user.id;
+    await startSession(req, user.id);
     res.json({ success: true, user: { id: user.id, email: user.email, firstName: user.firstName } });
   });
 
   // ====== NOTIFICATIONS ======
   app.get("/api/notifications", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const userNotifications = await db.select().from(notifications)
@@ -1105,8 +1018,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/notifications/unread-count", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const [result] = await db.select({ count: count() }).from(notifications)
@@ -1115,17 +1027,16 @@ export async function registerRoutes(
   });
 
   app.post("/api/notifications/mark-read", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
-    const { ids } = req.body;
-    if (Array.isArray(ids) && ids.length > 0) {
-      for (const id of ids) {
-        await db.update(notifications)
-          .set({ isRead: true })
-          .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
-      }
+    const parsed = z.object({ ids: z.array(z.number().int().positive()).max(200).optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: "ids must be an array of notification ids" });
+    const ids = parsed.data.ids;
+    if (ids && ids.length > 0) {
+      await db.update(notifications)
+        .set({ isRead: true })
+        .where(and(inArray(notifications.id, ids), eq(notifications.userId, userId)));
     } else {
       // Mark all as read
       await db.update(notifications)
@@ -1222,8 +1133,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/comparisons/save", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    const userId = (req.user as any).claims?.sub;
+    const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
 
     const input = z.object({
@@ -1243,12 +1153,12 @@ export async function registerRoutes(
   });
 
   // ====== ANALYTICS DASHBOARD ======
-  app.get("/api/analytics/clicks", async (req, res) => {
-    const cacheKey = `analytics:clicks`;
+  app.get("/api/analytics/clicks", isAdmin, async (req, res) => {
+    const days = Math.min(Math.max(Math.trunc(Number(req.query.days)) || 30, 1), 365);
+    const cacheKey = `analytics:clicks:${days}`;
     const cached = cache.get<any>(cacheKey);
     if (cached) return res.json(cached);
 
-    const days = Number(req.query.days) || 30;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     // Total clicks
@@ -1306,7 +1216,7 @@ export async function registerRoutes(
     res.json(result);
   });
 
-  app.get("/api/analytics/overview", async (req, res) => {
+  app.get("/api/analytics/overview", isAdmin, async (req, res) => {
     const cacheKey = `analytics:overview`;
     const cached = cache.get<any>(cacheKey);
     if (cached) return res.json(cached);
@@ -1334,7 +1244,7 @@ export async function registerRoutes(
   });
 
   // Cache invalidation endpoint
-  app.post("/api/cache/invalidate", isAuthenticated, async (req, res) => {
+  app.post("/api/cache/invalidate", isAdmin, async (req, res) => {
     const { pattern } = req.body;
     if (pattern) {
       cache.invalidatePattern(pattern);
@@ -1344,927 +1254,14 @@ export async function registerRoutes(
     res.json({ success: true, stats: cache.stats() });
   });
 
-  // Seed Data — only auto-seed in development. Use `npm run db:seed` for production.
-  if (process.env.NODE_ENV !== "production") {
-    await seedDatabase();
-  }
+  // Scheduled jobs. Vercel Cron calls these with `Authorization: Bearer $CRON_SECRET`.
+  app.get("/api/cron/price-check", async (req, res) => {
+    if (!isValidCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const result = await checkPricesForAllTrackers();
+    res.json({ success: true, ...result });
+  });
 
   return httpServer;
-}
-
-async function seedDatabase() {
-  const usProducts = await storage.getProductsByCountry('US');
-  if (usProducts.length === 0) {
-    console.log("Seeding Database...");
-    
-    // Create Retailers
-    const [sephora] = await db.insert(retailers).values({
-      name: "Sephora",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Sephora"
-    }).returning();
-
-    const [ulta] = await db.insert(retailers).values({
-      name: "Ulta Beauty",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ffffff/000000?text=Ulta"
-    }).returning();
-
-    const [nykaa] = await db.insert(retailers).values({
-      name: "Nykaa",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/fc2779/ffffff?text=Nykaa"
-    }).returning();
-
-    const [purplle] = await db.insert(retailers).values({
-      name: "Purplle",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/8b5cf6/ffffff?text=Purplle"
-    }).returning();
-
-    // Additional India retailers for monetization
-    const [amazonIn] = await db.insert(retailers).values({
-      name: "Amazon India",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
-    }).returning();
-
-    const [myntra] = await db.insert(retailers).values({
-      name: "Myntra",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/ff3f6c/ffffff?text=Myntra"
-    }).returning();
-
-    const [tataCliq] = await db.insert(retailers).values({
-      name: "Tata CLiQ",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/e91e63/ffffff?text=TataCLiQ"
-    }).returning();
-
-    const [sephoraIn] = await db.insert(retailers).values({
-      name: "Sephora India",
-      country: "IN",
-      logoUrl: "https://placehold.co/100x40/000000/ffffff?text=Sephora"
-    }).returning();
-
-    // Additional US retailers
-    const [amazonUs] = await db.insert(retailers).values({
-      name: "Amazon",
-      country: "US",
-      logoUrl: "https://placehold.co/100x40/ff9900/000000?text=Amazon"
-    }).returning();
-
-    // US Products with working images and video data
-    const usProductData = [
-      {
-        name: "Soft Pinch Liquid Blush",
-        brand: "Rare Beauty",
-        category: "Makeup",
-        country: "US",
-        description: "A weightless, long-lasting liquid blush that blends and builds beautifully for a soft, healthy flush.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
-        whyTrending: "Viral on TikTok for its high pigmentation and lasting power.",
-        tags: { priceBand: "mid", finish: "dewy" },
-        price: 23.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Rare Beauty Blush Review - Worth the Hype?",
-            videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
-            creatorName: "Jackie Aina",
-            creatorHandle: "@jackieaina",
-            creatorFollowers: "3.5M"
-          },
-          {
-            platform: "tiktok",
-            title: "One dot is all you need!",
-            videoUrl: "https://www.tiktok.com/@rarebeauty",
-            embedUrl: "https://www.tiktok.com/embed/v2/7200000000000000000",
-            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
-            creatorName: "Mikayla Nogueira",
-            creatorHandle: "@mikaylanogueira",
-            creatorFollowers: "15.2M"
-          },
-          {
-            platform: "instagram",
-            title: "My everyday blush routine",
-            videoUrl: "https://www.instagram.com/rarebeauty",
-            embedUrl: "https://www.instagram.com/reel/ABC123/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
-            creatorName: "Nikkie de Jager",
-            creatorHandle: "@nikkietutorials",
-            creatorFollowers: "16.8M"
-          }
-        ]
-      },
-      {
-        name: "Black Honey Lip Balm",
-        brand: "Clinique",
-        category: "Makeup",
-        country: "US",
-        description: "Iconic sheer berry tint that adapts to your unique chemistry for a personalized flush.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
-        whyTrending: "90s nostalgia comeback! The OG universally flattering lip color.",
-        tags: { priceBand: "mid", finish: "sheer" },
-        price: 22.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "The Original 90s Lip is BACK",
-            videoUrl: "https://www.youtube.com/watch?v=example1",
-            embedUrl: "https://www.youtube.com/embed/example1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=300&h=400&fit=crop",
-            creatorName: "Robert Welsh",
-            creatorHandle: "@robertwelsh",
-            creatorFollowers: "1.2M"
-          },
-          {
-            platform: "tiktok",
-            title: "POV: Your mom's favorite lip product",
-            videoUrl: "https://www.tiktok.com/@clinique",
-            embedUrl: "https://www.tiktok.com/embed/v2/7300000000000000000",
-            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
-            creatorName: "Alix Earle",
-            creatorHandle: "@alixearle",
-            creatorFollowers: "6.8M"
-          }
-        ]
-      },
-      {
-        name: "Watermelon Glow Dew Drops",
-        brand: "Glow Recipe",
-        category: "Skincare",
-        country: "US",
-        description: "Hyaluronic acid serum with watermelon, vitamin E, and light-reflecting pigments for instant glow.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
-        whyTrending: "Glass skin in a bottle! Celebrity makeup artists swear by it.",
-        tags: { priceBand: "high", finish: "dewy" },
-        price: 34.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Glass Skin Tutorial with Glow Recipe",
-            videoUrl: "https://www.youtube.com/watch?v=example2",
-            embedUrl: "https://www.youtube.com/embed/example2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
-            creatorName: "Hyram Yarbro",
-            creatorHandle: "@hyaboratory",
-            creatorFollowers: "4.5M"
-          },
-          {
-            platform: "instagram",
-            title: "My morning skincare routine",
-            videoUrl: "https://www.instagram.com/glowrecipe",
-            embedUrl: "https://www.instagram.com/reel/DEF456/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
-            creatorName: "James Welsh",
-            creatorHandle: "@james_s_welsh",
-            creatorFollowers: "892K"
-          },
-          {
-            platform: "tiktok",
-            title: "The dewiest skin ever",
-            videoUrl: "https://www.tiktok.com/@glowrecipe",
-            embedUrl: "https://www.tiktok.com/embed/v2/7400000000000000000",
-            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
-            creatorName: "Skincare by Cassandra",
-            creatorHandle: "@skincaresbycass",
-            creatorFollowers: "2.1M"
-          }
-        ]
-      },
-      {
-        name: "Lash Sensational Sky High Mascara",
-        brand: "Maybelline",
-        category: "Makeup",
-        country: "US",
-        description: "Lengthening and volumizing mascara with flex tower brush for limitless length.",
-        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600",
-        whyTrending: "Drugstore mascara that rivals luxury! 10M+ TikTok views.",
-        tags: { priceBand: "budget", finish: "dramatic" },
-        price: 13.99,
-        currency: "USD",
-        videos: [
-          {
-            platform: "tiktok",
-            title: "This $14 mascara changed my life",
-            videoUrl: "https://www.tiktok.com/@maybelline",
-            embedUrl: "https://www.tiktok.com/embed/v2/7500000000000000000",
-            thumbnailUrl: "https://images.unsplash.com/photo-1597225244660-1cd128c64284?w=300&h=400&fit=crop",
-            creatorName: "Meredith Duxbury",
-            creatorHandle: "@meredithduxbury",
-            creatorFollowers: "18.5M"
-          },
-          {
-            platform: "youtube",
-            title: "Best Drugstore Mascara 2024",
-            videoUrl: "https://www.youtube.com/watch?v=example3",
-            embedUrl: "https://www.youtube.com/embed/example3",
-            thumbnailUrl: "https://images.unsplash.com/photo-1583241800698-e8ab01d85f4e?w=300&h=400&fit=crop",
-            creatorName: "Taylor Wynn",
-            creatorHandle: "@taylorwynn",
-            creatorFollowers: "1.1M"
-          }
-        ]
-      },
-      {
-        name: "Brazilian Bum Bum Cream",
-        brand: "Sol de Janeiro",
-        category: "Body",
-        country: "US",
-        description: "Fast-absorbing body cream with cupuacu butter and coconut oil for silky skin.",
-        imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=600",
-        whyTrending: "The iconic Brazilian scent everyone is obsessed with!",
-        tags: { priceBand: "high", finish: "smooth" },
-        price: 48.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Why Everyone is Obsessed with This Scent",
-            videoUrl: "https://www.youtube.com/watch?v=example4",
-            embedUrl: "https://www.youtube.com/embed/example4",
-            thumbnailUrl: "https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=300&h=400&fit=crop",
-            creatorName: "Samantha Ravndahl",
-            creatorHandle: "@ssssamanthaa",
-            creatorFollowers: "2.3M"
-          }
-        ]
-      },
-      {
-        name: "Lip Butter Balm",
-        brand: "Summer Fridays",
-        category: "Makeup",
-        country: "US",
-        description: "Silky smooth lip balm with shea and murumuru seed butter for instant hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1631214524020-7e18db9a8f92?w=600",
-        whyTrending: "TikTok's favorite lip product! Clean ingredients, maximum hydration.",
-        tags: { priceBand: "mid", finish: "glossy" },
-        price: 24.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Summer Fridays Lip Butter - Honest Review",
-            videoUrl: "https://www.youtube.com/watch?v=lipbutter1",
-            embedUrl: "https://www.youtube.com/embed/lipbutter1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
-            creatorName: "Susan Yara",
-            creatorHandle: "@susanyara",
-            creatorFollowers: "1.8M"
-          },
-          {
-            platform: "youtube",
-            title: "Best Lip Products 2024",
-            videoUrl: "https://www.youtube.com/watch?v=lipbutter2",
-            embedUrl: "https://www.youtube.com/embed/lipbutter2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=300&h=400&fit=crop",
-            creatorName: "Kathleen Lights",
-            creatorHandle: "@kathleenlights",
-            creatorFollowers: "4.2M"
-          }
-        ]
-      },
-      {
-        name: "Snail Mucin 96% Power Essence",
-        brand: "COSRX",
-        category: "Skincare",
-        country: "US",
-        description: "Lightweight essence with 96% snail secretion filtrate for deep hydration and skin repair.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
-        whyTrending: "K-beauty cult favorite! 100M+ bottles sold worldwide.",
-        tags: { priceBand: "budget", finish: "hydrating" },
-        price: 25.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "COSRX Snail Mucin - 1 Year Review",
-            videoUrl: "https://www.youtube.com/watch?v=snailmucin1",
-            embedUrl: "https://www.youtube.com/embed/snailmucin1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
-            creatorName: "Kelly Driscoll",
-            creatorHandle: "@kellydriscoll",
-            creatorFollowers: "520K"
-          },
-          {
-            platform: "youtube",
-            title: "How I Fixed My Skin with Snail Mucin",
-            videoUrl: "https://www.youtube.com/watch?v=snailmucin2",
-            embedUrl: "https://www.youtube.com/embed/snailmucin2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
-            creatorName: "James Welsh",
-            creatorHandle: "@jameswelsh",
-            creatorFollowers: "1.2M"
-          }
-        ]
-      },
-      {
-        name: "Cloud Paint",
-        brand: "Glossier",
-        category: "Makeup",
-        country: "US",
-        description: "Seamless, buildable gel-cream blush for a natural, flushed-from-within look.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
-        whyTrending: "The internet's favorite blush! So easy to apply.",
-        tags: { priceBand: "mid", finish: "natural" },
-        price: 20.00,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Glossier Cloud Paint - All Shades Reviewed",
-            videoUrl: "https://www.youtube.com/watch?v=cloudpaint1",
-            embedUrl: "https://www.youtube.com/embed/cloudpaint1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
-            creatorName: "Allana Davison",
-            creatorHandle: "@allanadavison",
-            creatorFollowers: "1.5M"
-          }
-        ]
-      },
-      {
-        name: "Retinol 0.5 Treatment",
-        brand: "The Ordinary",
-        category: "Skincare",
-        country: "US",
-        description: "Pure retinol serum for reducing fine lines and improving skin texture.",
-        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600",
-        whyTrending: "Affordable retinol that actually works! Dermatologist approved.",
-        tags: { priceBand: "budget", finish: "anti-aging" },
-        price: 8.90,
-        currency: "USD",
-        videos: [
-          {
-            platform: "youtube",
-            title: "The Ordinary Retinol Guide",
-            videoUrl: "https://www.youtube.com/watch?v=ordinary1",
-            embedUrl: "https://www.youtube.com/embed/ordinary1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=300&h=400&fit=crop",
-            creatorName: "Cassandra Bankson",
-            creatorHandle: "@cassandrabankson",
-            creatorFollowers: "2.1M"
-          },
-          {
-            platform: "youtube",
-            title: "How to Use The Ordinary Products",
-            videoUrl: "https://www.youtube.com/watch?v=ordinary2",
-            embedUrl: "https://www.youtube.com/embed/ordinary2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
-            creatorName: "Dr. Shereene Idriss",
-            creatorHandle: "@shereeneidriss",
-            creatorFollowers: "890K"
-          }
-        ]
-      },
-    ];
-
-    // India Products with video data
-    const inProductData = [
-      {
-        name: "Matte Drama Long Stay Lipstick",
-        brand: "Kay Beauty",
-        category: "Makeup",
-        country: "IN",
-        description: "Long stay matte lipstick enriched with vitamin E for comfortable wear.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
-        whyTrending: "Katrina Kaif's brand, highly rated for Indian skin tones.",
-        tags: { priceBand: "budget", finish: "matte" },
-        price: 999.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Kay Beauty Lipstick Review - All Shades Swatches",
-            videoUrl: "https://www.youtube.com/watch?v=kaybeauty1",
-            embedUrl: "https://www.youtube.com/embed/kaybeauty1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
-            creatorName: "Shreya Jain",
-            creatorHandle: "@shreyajain",
-            creatorFollowers: "2.1M"
-          },
-          {
-            platform: "instagram",
-            title: "My go-to lipstick for Indian weddings",
-            videoUrl: "https://www.instagram.com/kaybykatrina",
-            embedUrl: "https://www.instagram.com/reel/kaybeauty/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=300&h=400&fit=crop",
-            creatorName: "Malvika Sitlani",
-            creatorHandle: "@malvikasitlani",
-            creatorFollowers: "1.8M"
-          }
-        ]
-      },
-      {
-        name: "Kumkumadi Tailam Face Oil",
-        brand: "Forest Essentials",
-        category: "Skincare",
-        country: "IN",
-        description: "Ayurvedic night serum with saffron and 16 precious herbs for radiant skin.",
-        imageUrl: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600",
-        whyTrending: "Ancient Ayurvedic secret for bridal glow! Dermatologist approved.",
-        tags: { priceBand: "high", finish: "radiant" },
-        price: 2650.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Kumkumadi Oil - Worth the Hype? Honest Review",
-            videoUrl: "https://www.youtube.com/watch?v=kumkumadi1",
-            embedUrl: "https://www.youtube.com/embed/kumkumadi1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
-            creatorName: "Jovita George",
-            creatorHandle: "@jovitageorge",
-            creatorFollowers: "890K"
-          },
-          {
-            platform: "youtube",
-            title: "Bridal Skincare Routine with Kumkumadi",
-            videoUrl: "https://www.youtube.com/watch?v=kumkumadi2",
-            embedUrl: "https://www.youtube.com/embed/kumkumadi2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
-            creatorName: "Corallista",
-            creatorHandle: "@corallista",
-            creatorFollowers: "650K"
-          },
-          {
-            platform: "instagram",
-            title: "Night routine for glowing skin",
-            videoUrl: "https://www.instagram.com/forestessentials",
-            embedUrl: "https://www.instagram.com/reel/forest/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
-            creatorName: "Debasree Banerjee",
-            creatorHandle: "@debasreebanerjee",
-            creatorFollowers: "1.2M"
-          }
-        ]
-      },
-      {
-        name: "Hydra Boost Moisturizer",
-        brand: "Minimalist",
-        category: "Skincare",
-        country: "IN",
-        description: "Lightweight gel moisturizer with 5% marula oil and squalane for deep hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600",
-        whyTrending: "Indian skincare brand going global! Clean beauty at its best.",
-        tags: { priceBand: "budget", finish: "hydrating" },
-        price: 599.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Minimalist Skincare Full Range Review",
-            videoUrl: "https://www.youtube.com/watch?v=minimalist1",
-            embedUrl: "https://www.youtube.com/embed/minimalist1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
-            creatorName: "Prakriti Singh",
-            creatorHandle: "@prakritsingh",
-            creatorFollowers: "450K"
-          },
-          {
-            platform: "instagram",
-            title: "Best budget moisturizer in India",
-            videoUrl: "https://www.instagram.com/minimalist",
-            embedUrl: "https://www.instagram.com/reel/minimalist/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=300&h=400&fit=crop",
-            creatorName: "Skin by Dr. V",
-            creatorHandle: "@skinbydrv",
-            creatorFollowers: "320K"
-          }
-        ]
-      },
-      {
-        name: "Nude Nail Enamel Collection",
-        brand: "Lakme",
-        category: "Nails",
-        country: "IN",
-        description: "Long-lasting, chip-resistant nail polish in universally flattering nude shades.",
-        imageUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600",
-        whyTrending: "Office-approved nudes that work for every occasion.",
-        tags: { priceBand: "budget", finish: "glossy" },
-        price: 250.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Lakme Nail Colors - All Shades Swatches",
-            videoUrl: "https://www.youtube.com/watch?v=lakme1",
-            embedUrl: "https://www.youtube.com/embed/lakme1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=300&h=400&fit=crop",
-            creatorName: "Nidhi Katiyar",
-            creatorHandle: "@nidhikatiyar",
-            creatorFollowers: "1.5M"
-          }
-        ]
-      },
-      {
-        name: "Rice Water Brightening Serum",
-        brand: "Plum",
-        category: "Skincare",
-        country: "IN",
-        description: "Korean-inspired brightening serum with fermented rice water and niacinamide.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
-        whyTrending: "K-beauty meets Ayurveda! Vegan and cruelty-free.",
-        tags: { priceBand: "mid", finish: "brightening" },
-        price: 699.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Plum Rice Water Serum - 30 Day Results",
-            videoUrl: "https://www.youtube.com/watch?v=plum1",
-            embedUrl: "https://www.youtube.com/embed/plum1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=300&h=400&fit=crop",
-            creatorName: "Shweta Vijay",
-            creatorHandle: "@shwetavijay",
-            creatorFollowers: "780K"
-          },
-          {
-            platform: "instagram",
-            title: "My brightening routine with Plum",
-            videoUrl: "https://www.instagram.com/plumgoodness",
-            embedUrl: "https://www.instagram.com/reel/plum/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
-            creatorName: "Ankita Chaturvedi",
-            creatorHandle: "@corallista",
-            creatorFollowers: "650K"
-          }
-        ]
-      },
-      {
-        name: "Vitamin C 10% Face Serum",
-        brand: "Minimalist",
-        category: "Skincare",
-        country: "IN",
-        description: "Ethyl ascorbic acid with ferulic acid for bright, even-toned skin.",
-        imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600",
-        whyTrending: "Affordable vitamin C that actually works! Pharmacy-grade ingredients.",
-        tags: { priceBand: "budget", finish: "brightening" },
-        price: 545.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Best Vitamin C Serums in India - Comparison",
-            videoUrl: "https://www.youtube.com/watch?v=vitc1",
-            embedUrl: "https://www.youtube.com/embed/vitc1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1570194065650-d99fb4b38b17?w=300&h=400&fit=crop",
-            creatorName: "Shreya Jain",
-            creatorHandle: "@shreyajain",
-            creatorFollowers: "2.1M"
-          },
-          {
-            platform: "youtube",
-            title: "Minimalist Vitamin C - 60 Day Update",
-            videoUrl: "https://www.youtube.com/watch?v=vitc2",
-            embedUrl: "https://www.youtube.com/embed/vitc2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
-            creatorName: "Prakriti Singh",
-            creatorHandle: "@prakritsingh",
-            creatorFollowers: "450K"
-          }
-        ]
-      },
-      {
-        name: "Colossal Kajal 24Hr",
-        brand: "Maybelline",
-        category: "Makeup",
-        country: "IN",
-        description: "Smudge-proof, waterproof kajal for intense black definition that lasts all day.",
-        imageUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=600",
-        whyTrending: "India's favorite kajal! Perfect for humid weather.",
-        tags: { priceBand: "budget", finish: "matte" },
-        price: 325.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Best Kajals for Indian Eyes - Top 10",
-            videoUrl: "https://www.youtube.com/watch?v=kajal1",
-            embedUrl: "https://www.youtube.com/embed/kajal1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1631214540553-ff044a3ff1d4?w=300&h=400&fit=crop",
-            creatorName: "Malvika Sitlani",
-            creatorHandle: "@malvikasitlani",
-            creatorFollowers: "1.8M"
-          },
-          {
-            platform: "instagram",
-            title: "Smudge test in Mumbai humidity",
-            videoUrl: "https://www.instagram.com/maybellineindia",
-            embedUrl: "https://www.instagram.com/reel/kajal/embed",
-            thumbnailUrl: "https://images.unsplash.com/photo-1597225244660-1cd128c64284?w=300&h=400&fit=crop",
-            creatorName: "Nidhi Katiyar",
-            creatorHandle: "@nidhikatiyar",
-            creatorFollowers: "1.5M"
-          }
-        ]
-      },
-      {
-        name: "Sunscreen SPF 50 PA++++",
-        brand: "Dot & Key",
-        category: "Skincare",
-        country: "IN",
-        description: "Lightweight, non-greasy sunscreen with vitamin C for daily protection.",
-        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=600",
-        whyTrending: "Finally a sunscreen that doesn't leave white cast on Indian skin!",
-        tags: { priceBand: "mid", finish: "matte" },
-        price: 695.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Best Sunscreens for Indian Skin - No White Cast",
-            videoUrl: "https://www.youtube.com/watch?v=sunscreen1",
-            embedUrl: "https://www.youtube.com/embed/sunscreen1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=400&fit=crop",
-            creatorName: "Jovita George",
-            creatorHandle: "@jovitageorge",
-            creatorFollowers: "890K"
-          }
-        ]
-      },
-      {
-        name: "Compact Powder SPF 15",
-        brand: "Lakme",
-        category: "Makeup",
-        country: "IN",
-        description: "Silky smooth compact with built-in sunscreen for flawless matte finish.",
-        imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600",
-        whyTrending: "India's OG compact! Perfect for on-the-go touch ups.",
-        tags: { priceBand: "budget", finish: "matte" },
-        price: 295.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Lakme 9 to 5 Compact Review",
-            videoUrl: "https://www.youtube.com/watch?v=lakmecompact1",
-            embedUrl: "https://www.youtube.com/embed/lakmecompact1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=300&h=400&fit=crop",
-            creatorName: "Debasree Banerjee",
-            creatorHandle: "@debasreebanerjee",
-            creatorFollowers: "1.2M"
-          }
-        ]
-      },
-      {
-        name: "Salicylic Acid 2% Face Serum",
-        brand: "Minimalist",
-        category: "Skincare",
-        country: "IN",
-        description: "BHA serum for acne-prone skin, helps unclog pores and reduce breakouts.",
-        imageUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=600",
-        whyTrending: "Best affordable BHA serum in India! Dermat recommended.",
-        tags: { priceBand: "budget", finish: "clarifying" },
-        price: 549.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Minimalist Salicylic Acid - 30 Day Review",
-            videoUrl: "https://www.youtube.com/watch?v=salicylic1",
-            embedUrl: "https://www.youtube.com/embed/salicylic1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1617897903246-719242758050?w=300&h=400&fit=crop",
-            creatorName: "Shreya Jain",
-            creatorHandle: "@shreyajain",
-            creatorFollowers: "2.1M"
-          },
-          {
-            platform: "youtube",
-            title: "Best Products for Acne in India",
-            videoUrl: "https://www.youtube.com/watch?v=salicylic2",
-            embedUrl: "https://www.youtube.com/embed/salicylic2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=300&h=400&fit=crop",
-            creatorName: "Jovita George",
-            creatorHandle: "@jovitageorge",
-            creatorFollowers: "890K"
-          }
-        ]
-      },
-      {
-        name: "Liquid Lipstick Matte",
-        brand: "Sugar Cosmetics",
-        category: "Makeup",
-        country: "IN",
-        description: "Long-lasting matte liquid lipstick with intense pigmentation.",
-        imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
-        whyTrending: "Homegrown brand loved for bold Indian shades!",
-        tags: { priceBand: "mid", finish: "matte" },
-        price: 799.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Sugar Cosmetics Full Range Review",
-            videoUrl: "https://www.youtube.com/watch?v=sugar1",
-            embedUrl: "https://www.youtube.com/embed/sugar1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=300&h=400&fit=crop",
-            creatorName: "Corallista",
-            creatorHandle: "@corallista",
-            creatorFollowers: "650K"
-          }
-        ]
-      },
-      {
-        name: "Green Tea Night Gel",
-        brand: "Plum",
-        category: "Skincare",
-        country: "IN",
-        description: "Oil-free night gel with green tea extracts for acne control and hydration.",
-        imageUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600",
-        whyTrending: "100% vegan and cruelty-free! Perfect for oily skin.",
-        tags: { priceBand: "mid", finish: "hydrating" },
-        price: 575.00,
-        currency: "INR",
-        videos: [
-          {
-            platform: "youtube",
-            title: "Plum Green Tea Range - Complete Review",
-            videoUrl: "https://www.youtube.com/watch?v=plumgt1",
-            embedUrl: "https://www.youtube.com/embed/plumgt1",
-            thumbnailUrl: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&h=400&fit=crop",
-            creatorName: "Prakriti Singh",
-            creatorHandle: "@prakritsingh",
-            creatorFollowers: "450K"
-          },
-          {
-            platform: "youtube",
-            title: "Best Night Creams for Oily Skin India",
-            videoUrl: "https://www.youtube.com/watch?v=plumgt2",
-            embedUrl: "https://www.youtube.com/embed/plumgt2",
-            thumbnailUrl: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=300&h=400&fit=crop",
-            creatorName: "Shweta Vijay",
-            creatorHandle: "@shwetavijay",
-            creatorFollowers: "780K"
-          }
-        ]
-      },
-    ];
-
-    // Insert US Products with videos
-    for (const prod of usProductData) {
-      const youtubeVideoCount = prod.videos?.filter(v => v.platform === 'youtube').length || 0;
-      const [newProduct] = await db.insert(products).values({
-        name: prod.name,
-        brand: prod.brand,
-        category: prod.category,
-        country: prod.country,
-        description: prod.description,
-        imageUrl: resolveProductImage(prod.brand, prod.name),
-        whyTrending: prod.whyTrending,
-        tags: prod.tags,
-        influencerCount: youtubeVideoCount,
-        lastInfluencerRefresh: youtubeVideoCount > 0 ? new Date() : null
-      }).returning();
-
-      const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
-      if (newProduct && sephora) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: sephora.id,
-          price: prod.price,
-          currency: prod.currency,
-          affiliateUrl: `https://www.sephora.com/search?keyword=${searchQuery}`
-        });
-      }
-      if (newProduct && ulta && prod.brand !== "Rare Beauty") {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: ulta.id,
-          price: prod.price * 0.95,
-          currency: prod.currency,
-          affiliateUrl: `https://www.ulta.com/search?query=${searchQuery}`
-        });
-      }
-      if (newProduct && amazonUs) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: amazonUs.id,
-          price: prod.price * 0.92,
-          currency: prod.currency,
-          affiliateUrl: `https://www.amazon.com/s?k=${searchQuery}`
-        });
-      }
-      
-      // Insert videos with influencer info (YouTube only)
-      if (newProduct && prod.videos) {
-        const youtubeVideos = prod.videos.filter(v => v.platform === 'youtube');
-        for (const video of youtubeVideos) {
-          const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
-          const realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
-          await db.insert(productVideos).values({
-            productId: newProduct.id,
-            platform: 'youtube',
-            title: video.title,
-            videoUrl: realVideoUrl,
-            embedUrl: video.embedUrl,
-            thumbnailUrl: video.thumbnailUrl,
-            creatorName: video.creatorName,
-            creatorHandle: video.creatorHandle,
-            creatorFollowers: video.creatorFollowers
-          });
-        }
-      }
-    }
-
-    // Insert India Products with videos
-    for (const prod of inProductData) {
-      const youtubeVideoCount = prod.videos?.filter(v => v.platform === 'youtube').length || 0;
-      const [newProduct] = await db.insert(products).values({
-        name: prod.name,
-        brand: prod.brand,
-        category: prod.category,
-        country: prod.country,
-        description: prod.description,
-        imageUrl: resolveProductImage(prod.brand, prod.name),
-        whyTrending: prod.whyTrending,
-        tags: prod.tags,
-        influencerCount: youtubeVideoCount,
-        lastInfluencerRefresh: youtubeVideoCount > 0 ? new Date() : null
-      }).returning();
-
-      const searchQuery = encodeURIComponent(`${prod.brand} ${prod.name}`);
-      if (newProduct && nykaa) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: nykaa.id,
-          price: prod.price,
-          currency: prod.currency,
-          affiliateUrl: `https://www.nykaa.com/search/result/?q=${searchQuery}`
-        });
-      }
-      if (newProduct && purplle) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: purplle.id,
-          price: prod.price * 0.9,
-          currency: prod.currency,
-          affiliateUrl: `https://www.purplle.com/search?q=${searchQuery}`
-        });
-      }
-      if (newProduct && amazonIn) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: amazonIn.id,
-          price: prod.price * 0.95,
-          currency: prod.currency,
-          affiliateUrl: `https://www.amazon.in/s?k=${searchQuery}`
-        });
-      }
-      if (newProduct && myntra) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: myntra.id,
-          price: prod.price * 0.88,
-          currency: prod.currency,
-          affiliateUrl: `https://www.myntra.com/${searchQuery.toLowerCase().replace(/%20/g, '-')}`
-        });
-      }
-      if (newProduct && tataCliq) {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: tataCliq.id,
-          price: prod.price * 0.93,
-          currency: prod.currency,
-          affiliateUrl: `https://www.tatacliq.com/search/?searchCategory=all&text=${searchQuery}`
-        });
-      }
-      if (newProduct && sephoraIn && prod.brand !== "Lakme" && prod.brand !== "Maybelline") {
-        await db.insert(productOffers).values({
-          productId: newProduct.id,
-          retailerId: sephoraIn.id,
-          price: prod.price * 1.05,
-          currency: prod.currency,
-          affiliateUrl: `https://www.sephora.in/search?q=${searchQuery}`
-        });
-      }
-      
-      // Insert videos with influencer info (YouTube only)
-      if (newProduct && prod.videos) {
-        const youtubeVideos = prod.videos.filter(v => v.platform === 'youtube');
-        for (const video of youtubeVideos) {
-          const videoSearchQuery = encodeURIComponent(`${video.creatorName} ${prod.brand} ${prod.name} review`);
-          const realVideoUrl = `https://www.youtube.com/results?search_query=${videoSearchQuery}`;
-          await db.insert(productVideos).values({
-            productId: newProduct.id,
-            platform: 'youtube',
-            title: video.title,
-            videoUrl: realVideoUrl,
-            embedUrl: video.embedUrl,
-            thumbnailUrl: video.thumbnailUrl,
-            creatorName: video.creatorName,
-            creatorHandle: video.creatorHandle,
-            creatorFollowers: video.creatorFollowers
-          });
-        }
-      }
-    }
-
-    console.log("Database seeded successfully!");
-  }
 }

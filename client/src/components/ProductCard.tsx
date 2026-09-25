@@ -11,7 +11,7 @@ interface ProductCardProps {
 
 function formatPrice(price: number, currency: string): string {
   if (currency === 'INR') {
-    return `₹${price.toLocaleString('en-IN')}`;
+    return `₹${Math.round(price).toLocaleString('en-IN')}`;
   }
   return `$${price.toFixed(2)}`;
 }

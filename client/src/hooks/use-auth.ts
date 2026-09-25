@@ -1,47 +1,26 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { User } from "@shared/models/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import { apiUrl } from "@/lib/api";
+import { useUser } from "./use-user";
 
-async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/user", {
-    credentials: "include",
-  });
-
-  if (response.status === 401) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+/** Starts Google sign-in (a full-page redirect through the API). */
+export function startGoogleLogin() {
+  window.location.href = apiUrl("/api/login");
 }
 
 export function useAuth() {
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery<User | null>({
-    queryKey: ["/api/auth/user"],
-    queryFn: fetchUser,
-    retry: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
+  const { data: user, isLoading } = useUser();
 
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      queryClient.setQueryData(["/api/auth/user"], null);
-    },
-  });
+  const logout = () => {
+    queryClient.setQueryData([api.user.get.path], null);
+    window.location.href = apiUrl("/api/logout");
+  };
 
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
-    logout: logoutMutation.mutate,
-    isLoggingOut: logoutMutation.isPending,
+    logout,
   };
 }

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 import { api } from "@shared/routes";
 
 // Type for merged user data (auth claims + DB preferences)
@@ -9,6 +10,8 @@ export interface MergedUser {
   lastName: string | null;
   profileImageUrl: string | null;
   country: string | null;
+  /** Operator account (ADMIN_EMAILS); unlocks bulk refresh and analytics. */
+  isAdmin?: boolean;
   preferences: {
     interests: string[];
     budget: string;
@@ -32,7 +35,7 @@ export function useUser() {
   return useQuery<MergedUser | null>({
     queryKey: [api.user.get.path],
     queryFn: async () => {
-      const res = await fetch(api.user.get.path, { credentials: "include" });
+      const res = await apiFetch(api.user.get.path, { credentials: "include" });
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
       return res.json();
@@ -46,7 +49,7 @@ export function useUpdateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (updates: UpdateUserRequest) => {
-      const res = await fetch(api.user.update.path, {
+      const res = await apiFetch(api.user.update.path, {
         method: api.user.update.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),

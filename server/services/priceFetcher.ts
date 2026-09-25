@@ -3,6 +3,18 @@ import { products, productOffers, priceHistory, retailers } from "@shared/schema
 import { eq, and } from "drizzle-orm";
 
 const PYTHON_FETCHER_URL = process.env.PYTHON_FETCHER_URL || "http://localhost:8000";
+const FETCH_TIMEOUT_MS = 20_000;
+
+/** True when a price fetcher service has been configured for this deployment. */
+export function isPriceFetcherConfigured(): boolean {
+  return !!process.env.PYTHON_FETCHER_URL;
+}
+
+function fetcherHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.PRICE_FETCHER_TOKEN) headers.Authorization = `Bearer ${process.env.PRICE_FETCHER_TOKEN}`;
+  return headers;
+}
 
 const RETAILER_SLUG_MAP: Record<string, string> = {
   "nykaa": "Nykaa",
@@ -56,7 +68,8 @@ export async function fetchProductPrices(
   try {
     const response = await fetch(`${PYTHON_FETCHER_URL}/fetch`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: fetcherHeaders(),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       body: JSON.stringify({
         product_name: productName,
         brand: brand || null,
@@ -94,7 +107,8 @@ export async function triggerBackgroundRefresh(
   try {
     const response = await fetch(`${PYTHON_FETCHER_URL}/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: fetcherHeaders(),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       body: JSON.stringify({
         product_name: productName,
         brand: brand || null
@@ -108,9 +122,14 @@ export async function triggerBackgroundRefresh(
   }
 }
 
-export async function updateProductPricesFromFetch(productId: number): Promise<void> {
+/**
+ * Fetches live prices for a product and writes them to its offers + price history.
+ * Returns how many offers received a real, freshly observed price.
+ */
+export async function updateProductPricesFromFetch(productId: number): Promise<number> {
   const [product] = await db.select().from(products).where(eq(products.id, productId));
-  if (!product) return;
+  if (!product) return 0;
+  let updated = 0;
 
   const country = product.country || "US";
   const retailerSlugs = country === "IN" 
@@ -141,23 +160,25 @@ export async function updateProductPricesFromFetch(productId: number): Promise<v
         eq(productOffers.retailerId, matchedRetailer.id)
       ));
 
-    const affiliateUrl = fetched.productUrl || `https://${retailerName.toLowerCase().replace(' ', '')}.com`;
     const currency = fetched.currency as "INR" | "USD";
 
     if (existingOffer) {
       await db.update(productOffers)
         .set({
           price: fetched.price,
-          affiliateUrl: fetched.productUrl || existingOffer.affiliateUrl
+          affiliateUrl: fetched.productUrl || existingOffer.affiliateUrl,
+          lastUpdated: new Date(),
         })
         .where(eq(productOffers.id, existingOffer.id));
     } else {
+      // Never invent a link: a new offer needs the product URL the fetcher actually found.
+      if (!fetched.productUrl) continue;
       await db.insert(productOffers).values({
         productId,
         retailerId: matchedRetailer.id,
         price: fetched.price,
         currency,
-        affiliateUrl
+        affiliateUrl: fetched.productUrl,
       });
     }
 
@@ -167,12 +188,14 @@ export async function updateProductPricesFromFetch(productId: number): Promise<v
       price: fetched.price,
       currency
     });
+    updated++;
   }
+  return updated;
 }
 
 export async function checkPythonFetcherHealth(): Promise<boolean> {
   try {
-    const response = await fetch(`${PYTHON_FETCHER_URL}/health`);
+    const response = await fetch(`${PYTHON_FETCHER_URL}/health`, { signal: AbortSignal.timeout(5000) });
     return response.ok;
   } catch {
     return false;

@@ -1,3 +1,3 @@
-export { setupAuth, isAuthenticated, getSession } from "./googleAuth";
+export { setupAuth, getSession } from "./googleAuth";
+export { getUserId, requireUserId, isAuthenticated, isAdmin, isAdminUser } from "./identity";
 export { authStorage, type IAuthStorage } from "./storage";
-export { registerAuthRoutes } from "./routes";

@@ -36,12 +36,6 @@ const APP_CONFIG: Record<string, {
     androidScheme: 'sephora://',
     universalDomain: 'www.sephora.com'
   },
-  'Sephora India': { 
-    iosScheme: 'sephora://', 
-    androidPackage: 'com.sephora',
-    androidScheme: 'sephora://',
-    universalDomain: 'www.sephora.com'
-  },
   'Ulta Beauty': { 
     iosScheme: 'ulta://', 
     androidPackage: 'com.ulta.ulta',
@@ -82,8 +76,18 @@ export function generateDeepLink(
 ): DeepLinkResult {
   const platform = detectPlatform(userAgent);
   const config = APP_CONFIG[retailerName];
-  
-  if (!config) {
+
+  // Only rewrite links that already point at the retailer's own site. Affiliate
+  // network links (redirectors) must be left intact or the commission is lost.
+  let onRetailerDomain = false;
+  try {
+    const host = new URL(affiliateUrl).hostname;
+    onRetailerDomain = !!config && (host === config.universalDomain || "www." + host === config.universalDomain);
+  } catch {
+    onRetailerDomain = false;
+  }
+
+  if (!config || !onRetailerDomain) {
     return {
       universalLink: affiliateUrl,
       appScheme: null,

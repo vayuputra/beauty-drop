@@ -77,21 +77,23 @@ export default function Home() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleRefreshTrending}
-              disabled={refreshTrending.isPending}
-              data-testid="button-refresh-trending"
-              className="gap-2"
-            >
-              {refreshTrending.isPending ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              {refreshTrending.isPending ? 'Refreshing...' : 'Refresh'}
-            </Button>
+            {user.isAdmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRefreshTrending}
+                disabled={refreshTrending.isPending}
+                data-testid="button-refresh-trending"
+                className="gap-2"
+              >
+                {refreshTrending.isPending ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {refreshTrending.isPending ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            )}
             <Link href="/notifications" className="relative h-10 w-10 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors">
               <Bell size={18} />
               {(unreadData?.count || 0) > 0 && (
@@ -149,12 +151,13 @@ export default function Home() {
             <div className="mb-6">
               <Sparkles size={48} className="mx-auto text-muted-foreground/50 mb-4" />
               <h2 className="text-lg font-semibold text-foreground mb-2">
-                No Trending Products Yet
+                New drops are on their way
               </h2>
               <p className="text-muted-foreground text-sm max-w-xs mx-auto">
-                We show products that influencers are actively talking about. Click the button below to discover what's trending right now!
+                We're curating the latest launches for your region. Check back soon.
               </p>
             </div>
+            {user.isAdmin && (
             <Button
               onClick={handleRefreshTrending}
               disabled={refreshTrending.isPending}
@@ -168,6 +171,7 @@ export default function Home() {
               )}
               {refreshTrending.isPending ? 'Discovering...' : 'Discover Trending Products'}
             </Button>
+            )}
             {refreshTrending.isPending && (
               <p className="text-xs text-muted-foreground mt-4">
                 Searching YouTube, Instagram, and TikTok for beauty influencers...

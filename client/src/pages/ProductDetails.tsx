@@ -1,5 +1,6 @@
-import { useProduct, useTrackClick, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
+import { useProduct, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
 import { Link, useRoute } from "wouter";
+import { useState } from "react";
 import { Loader } from "@/components/Loader";
 import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper } from "lucide-react";
 import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
@@ -10,13 +11,28 @@ import { ReviewSummary } from "@/components/ReviewSummary";
 import { ProductImage } from "@/components/ProductImage";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl } from "@/lib/api";
+import { formatDistanceToNow } from "date-fns";
+
+/** Retailer logo with a letter avatar when there is no logo or it fails to load. */
+function RetailerLogo({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="w-10 h-10 flex-shrink-0 rounded-full bg-secondary flex items-center justify-center font-bold text-lg text-secondary-foreground overflow-hidden">
+      {logoUrl && !failed ? (
+        <img src={logoUrl} alt="" className="w-full h-full object-cover" onError={() => setFailed(true)} />
+      ) : (
+        <span aria-hidden="true">{name.charAt(0)}</span>
+      )}
+    </div>
+  );
+}
 
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
   const id = params ? parseInt(params.id) : 0;
   
   const { data: product, isLoading, refetch } = useProduct(id);
-  const trackClick = useTrackClick();
   const refreshInfluencers = useRefreshInfluencers();
   const refreshImage = useRefreshImage();
 
@@ -38,13 +54,21 @@ export default function ProductDetails() {
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
   if (!product) return <div className="p-8 text-center">Product not found</div>;
 
+  // The server records the click and redirects to the retailer (with its app deep link where supported).
   const handleOfferClick = (offer: any) => {
-    trackClick.mutate({
-      productId: product.id,
-      retailerId: offer.retailer.id,
-    });
-    window.open(offer.affiliateUrl, '_blank');
+    window.open(apiUrl(`/api/go/${offer.id}`), "_blank", "noopener");
   };
+
+  const handleRefreshPrices = async () => {
+    try {
+      const result = await refreshPrices.mutateAsync(id);
+      toast({ title: result.message ?? (result.success ? "Prices updated" : "Prices unchanged") });
+    } catch {
+      toast({ title: "Couldn't refresh prices", description: "Please try again later.", variant: "destructive" });
+    }
+  };
+
+  const sortedOffers = [...(product.offers ?? [])].sort((a: any, b: any) => a.price - b.price);
 
   const handleRefreshInfluencers = async () => {
     await refreshInfluencers.mutateAsync(product.id);
@@ -132,16 +156,19 @@ export default function ProductDetails() {
           >
             <Share2 size={18} className="text-foreground" />
           </button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRefreshImage}
-            disabled={refreshImage.isPending}
-            data-testid="button-refresh-image"
-            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
-          >
-            <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
-          </Button>
+          {user?.isAdmin && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleRefreshImage}
+              disabled={refreshImage.isPending}
+              data-testid="button-refresh-image"
+              aria-label="Refresh product image"
+              className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
+            >
+              <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
+            </Button>
+          )}
         </div>
         
         <ProductImage product={product} priority className="w-full h-full" />
@@ -520,7 +547,7 @@ export default function ProductDetails() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => refreshPrices.mutate(id)}
+              onClick={handleRefreshPrices}
               disabled={refreshPrices.isPending}
               data-testid="button-refresh-prices"
               className="gap-2"
@@ -534,25 +561,24 @@ export default function ProductDetails() {
             </Button>
           </div>
           <div className="space-y-3">
-            {product.offers && product.offers.length > 0 ? (
-              product.offers.map((offer: any) => (
+            {sortedOffers.length > 0 ? (
+              sortedOffers.map((offer: any, index: number) => (
                 <div 
                   key={offer.id} 
                   data-testid={`card-offer-${offer.id}`}
                   className="bg-white dark:bg-card p-4 rounded-xl border border-border shadow-sm flex items-center justify-between group hover:border-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center font-bold text-lg text-secondary-foreground overflow-hidden">
-                      {offer.retailer.logoUrl ? (
-                        <img src={offer.retailer.logoUrl} alt={offer.retailer.name} className="w-full h-full object-cover" />
-                      ) : (
-                        offer.retailer.name.charAt(0)
-                      )}
-                    </div>
+                    <RetailerLogo name={offer.retailer.name} logoUrl={offer.retailer.logoUrl} />
                     <div>
                       <p className="font-semibold text-foreground">{offer.retailer.name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        In Stock
+                      {index === 0 && sortedOffers.length > 1 && (
+                        <p className="text-xs text-accent font-semibold">Best price</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {offer.lastUpdated
+                          ? `Checked ${formatDistanceToNow(new Date(offer.lastUpdated), { addSuffix: true })}`
+                          : "Price not yet verified"}
                       </p>
                     </div>
                   </div>
@@ -561,7 +587,7 @@ export default function ProductDetails() {
                     <span className="font-bold text-lg">
                       {offer.currency === 'USD'
                         ? `$${Number(offer.price).toFixed(2)}`
-                        : `₹${Number(offer.price).toLocaleString('en-IN')}`}
+                        : `₹${Math.round(Number(offer.price)).toLocaleString('en-IN')}`}
                     </span>
                     <button
                       onClick={() => handleOfferClick(offer)}

@@ -3,12 +3,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import asyncio
+import hmac
 from datetime import datetime
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from models import (
@@ -37,13 +38,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Called server-to-server by the Node API only, so there is no CORS policy.
+# When PRICE_FETCHER_TOKEN is set, every route except health checks requires it.
+_PUBLIC_PATHS = {"/", "/health"}
+
+
+@app.middleware("http")
+async def require_token(request: Request, call_next):
+    token = os.environ.get("PRICE_FETCHER_TOKEN")
+    if token and request.url.path not in _PUBLIC_PATHS:
+        supplied = request.headers.get("authorization", "")
+        if not hmac.compare_digest(supplied, f"Bearer {token}"):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 class SingleProductRequest(BaseModel):

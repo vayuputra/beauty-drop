@@ -2,7 +2,7 @@
  * Beauty Drop — product-image integrity & UX benchmark audit.
  *
  * This is an HONEST, code-grounded audit: every check below reads the real source
- * of truth (the seed catalog in server/routes.ts, the curated image map, the proxy
+ * of truth (the seed catalog in server/seed.ts, the curated image map, the proxy
  * allowlist, and the client components) and asserts a concrete, verifiable property.
  * Nothing is hard-coded to "pass". Run with:  npx tsx script/audit.ts
  *
@@ -27,11 +27,11 @@ const checks: Check[] = [];
 const add = (name: string, pass: boolean, detail = "") => checks.push({ name, pass, detail });
 
 // ---------------------------------------------------------------------------
-// Extract the real seeded catalog from server/routes.ts (single source of truth)
+// Extract the real seeded catalog from server/seed.ts (single source of truth)
 // ---------------------------------------------------------------------------
 interface CatalogItem { name: string; brand: string; category: string; }
 function extractCatalog(): CatalogItem[] {
-  const src = read("server/routes.ts");
+  const src = read("server/seed.ts");
   const re = /name:\s*"([^"]+)",\s*\n\s*brand:\s*"([^"]+)",\s*\n\s*category:\s*"([^"]+)"/g;
   const items: CatalogItem[] = [];
   let m: RegExpExecArray | null;
@@ -167,7 +167,7 @@ uxAdd("Creator/influencer videos surfaced on details", /Product Videos/.test(pro
 
 // Loading & empty states (no blank/janky screens)
 uxAdd("Loading state on home feed", /productsLoading \? \(\s*<Loader/.test(home));
-uxAdd("Helpful empty state on home feed", /No Trending Products Yet/.test(home));
+uxAdd("Helpful empty state on home feed", /New drops are on their way/.test(home));
 uxAdd("Reduced-motion respected for animations", /prefers-reduced-motion/.test(indexCss));
 
 // Mobile ergonomics

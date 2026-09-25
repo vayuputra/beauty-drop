@@ -19,7 +19,7 @@ Beauty Drop is a mobile-first web app that delivers weekly curated "drops" of tr
 
 - **Frontend:** React 18 + TypeScript, Vite, Wouter, TanStack Query, Tailwind CSS, shadcn/ui (Radix), Framer Motion
 - **Backend:** Node.js + Express, TypeScript (ESM), Zod
-- **Auth:** Replit Auth (OpenID Connect) via Passport.js, PostgreSQL session store
+- **Auth:** Google sign-in (OpenID Connect) and email/password via Passport.js, PostgreSQL session store
 - **Database:** PostgreSQL with Drizzle ORM (`shared/schema.ts`)
 - **AI:** OpenAI GPT-4o (review synthesis + image verification), Perplexity (influencer discovery)
 - **Mobile:** Capacitor for Android packaging
@@ -41,15 +41,47 @@ beauty-drop/
 
 ```bash
 npm install
-npm run db:push   # apply schema to DATABASE_URL
-npm run dev       # start dev server (Vite + Express)
+cp .env.example .env      # fill in DATABASE_URL at minimum
+npm run db:push           # apply schema to DATABASE_URL
+npm run dev               # start dev server (Vite + Express); seeds demo products into an empty DB
 ```
 
-### Required Environment Variables
+Google sign-in is optional locally. Without `GOOGLE_CLIENT_ID` the server logs a warning and
+email/password sign-in still works. `npm run db:seed` loads the demo catalog on its own. The demo
+prices are placeholders and are shown as "Price not yet verified".
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `SESSION_SECRET`, `ISSUER_URL`, `REPL_ID` — Replit Auth
-- `OPENAI_API_KEY`, `PERPLEXITY_API_KEY` — AI features
+### Environment variables
+
+See `.env.example`. The important ones:
+
+- `DATABASE_URL`: PostgreSQL connection string
+- `SESSION_SECRET`: 32+ characters; required in production
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_CALLBACK_URL`: Google sign-in (required in production)
+- `ADMIN_EMAILS`: operator accounts allowed to run bulk refreshes, analytics and cache control
+- `CRON_SECRET`: protects `/api/cron/price-check`, which Vercel Cron calls to send price alerts
+- `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`: AI features (the app runs without them; only those features fail)
+- `PYTHON_FETCHER_URL`, `PRICE_FETCHER_TOKEN`: live price service (unset means "live prices not available")
+- `VITE_API_BASE_URL`: native builds only; the deployed API origin
+
+### Upgrading an existing database
+
+This release adds unique constraints. Run the dedupe script once, before pushing the schema:
+
+```bash
+psql "$DATABASE_URL" -f script/sql/dedupe-before-unique-indexes.sql
+npm run db:push
+```
+
+## Testing
+
+```bash
+npm run check              # typecheck
+npm test                   # unit tests; API integration tests also run when DATABASE_URL is set
+npm run audit:benchmarks   # image-integrity and UX benchmarks
+```
+
+Integration tests write to the database, so point `DATABASE_URL` at a disposable one. CI
+(`.github/workflows/ci.yml`) runs all of the above against a throwaway Postgres.
 
 ## Building
 

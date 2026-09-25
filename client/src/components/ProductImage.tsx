@@ -5,6 +5,7 @@ import {
   getProxiedImageUrl,
   isPlaceholderImage,
 } from "@/lib/productImage";
+import { apiUrl } from "@/lib/api";
 
 interface ProductImageProps {
   product: ProductImageInfo & { imageCandidates?: string[] | null };
@@ -49,7 +50,9 @@ export function ProductImage({
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const usingFallback = index >= candidates.length;
-  const src = usingFallback ? svg : getProxiedImageUrl(candidates[index]);
+  const proxied = usingFallback ? "" : getProxiedImageUrl(candidates[index]);
+  // Proxy URLs are API paths, which need the backend origin inside the native app.
+  const src = usingFallback ? svg : proxied.startsWith("/api/") ? apiUrl(proxied) : proxied;
 
   return (
     <div className={`relative overflow-hidden ${className}`}>

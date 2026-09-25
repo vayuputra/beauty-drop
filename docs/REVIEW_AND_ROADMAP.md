@@ -229,6 +229,32 @@ This is the feature that sets the product apart, and the one with the most risk.
 
 ---
 
+## Phase 0 status (2026-09-25)
+
+**Done:**
+- **Sign-in:** Google and email/password now share one session identity. Email/password sign-in has a form on the Auth page. The dead `/api/auth/user` endpoint is gone.
+- **One API client** (`client/src/lib/api.ts`) handles all requests, image-proxy URLs and logout, so the native build can reach the backend.
+- **Error handling:** async route errors reach one error handler that doesn't leak internal details, instead of crashing the process.
+- **Operator-only routes:** bulk refreshes, analytics, cache control, image refresh and verification, and digest generation now require `ADMIN_EMAILS`. Per-product AI enrichment is reused for 24h (videos) or 7 days (trust score, summary), so repeated taps don't each cost money.
+- **CSRF protection:** `SameSite=Lax` cookies, plus an Origin check on every state-changing API request.
+- **Image proxy:** accepts raster images only, re-checks each redirect against the allowlist, caps the size while streaming, and sends `nosniff` and a CSP.
+- **Honest prices:** "Refresh prices" only reports success when live prices actually arrived. Demo prices show "Price not yet verified", and offers are sorted with the best price flagged.
+- **Price alerts** fire once per new low. They run from Vercel Cron (`/api/cron/price-check`, daily on Hobby; use `15 */6 * * *` on Pro).
+- **Clicks and affiliate links:** clicks are recorded server-side through `/api/go/:offerId`. Deep links no longer strip affiliate redirectors.
+- **Data model:** unique constraints on favorites, trackers, trust scores, summaries and articles (see the dedupe script in the README).
+- **Cleanup:**
+  - Demo seed data moved to `server/seed.ts` (`npm run db:seed`), with the fabricated creator videos removed. `routes.ts` went from 2,270 to about 1,350 lines.
+  - The server now starts without AI keys.
+  - Dead Replit code removed.
+  - Font loading cut from about 25 families to 2.
+- **Tests and CI:** Vitest unit tests plus API integration tests against Postgres, and CI running typecheck, tests, benchmarks and the build.
+
+**Still open for Phase 0:**
+- Native bearer-token auth and native Google/Apple sign-in. Cookie sessions don't work across origins in the app.
+- A shared rate-limit and cache store (Redis).
+- Splitting `routes.ts` by domain.
+- `rejectUnauthorized: false` on the database TLS connection.
+
 ## 6. Phased plan
 
 | Phase | Scope | Outcome |

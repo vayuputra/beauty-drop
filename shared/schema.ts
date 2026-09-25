@@ -1,11 +1,10 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, doublePrecision, varchar, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 import { users } from "./models/auth";
 
 export * from "./models/auth";
-export * from "./models/chat";
 
 export const retailers = pgTable("retailers", {
   id: serial("id").primaryKey(),
@@ -109,7 +108,9 @@ export const productTrustScores = pgTable("product_trust_scores", {
   redditMentions: integer("reddit_mentions").default(0),
   redditSources: jsonb("reddit_sources").$type<string[]>(),
   lastCalculated: timestamp("last_calculated").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_trust_scores_product").on(table.productId),
+]);
 
 // AI-generated review summaries
 export const productReviewSummaries = pgTable("product_review_summaries", {
@@ -122,7 +123,9 @@ export const productReviewSummaries = pgTable("product_review_summaries", {
   consHighlights: jsonb("cons_highlights").$type<string[]>(),
   sources: jsonb("sources").$type<{ platform: string; reviewCount: number }[]>(),
   generatedAt: timestamp("generated_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_review_summaries_product").on(table.productId),
+]);
 
 // Price tracking for user alerts
 export const priceTrackers = pgTable("price_trackers", {
@@ -132,9 +135,14 @@ export const priceTrackers = pgTable("price_trackers", {
   targetPrice: doublePrecision("target_price"),
   notifyOnAnyDrop: boolean("notify_on_any_drop").default(true),
   isActive: boolean("is_active").default(true),
+  // Best price when tracking started; "any drop" alerts fire below the lower of this and lastNotifiedPrice.
+  baselinePrice: doublePrecision("baseline_price"),
+  lastNotifiedPrice: doublePrecision("last_notified_price"),
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_price_trackers_user_product").on(table.userId, table.productId),
+]);
 
 // Price history for tracking volatility
 export const priceHistory = pgTable("price_history", {
@@ -178,6 +186,7 @@ export const favorites = pgTable("favorites", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_favorites_user").on(table.userId),
+  uniqueIndex("uq_favorites_user_product").on(table.userId, table.productId),
 ]);
 
 // In-app notifications
@@ -207,6 +216,7 @@ export const productArticles = pgTable("product_articles", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
 }, (table) => [
   index("idx_articles_product").on(table.productId),
+  uniqueIndex("uq_articles_product_url").on(table.productId, table.url),
 ]);
 
 // Product comparison lists

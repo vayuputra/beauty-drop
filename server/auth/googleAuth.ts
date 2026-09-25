@@ -1,21 +1,29 @@
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
+import crypto from "crypto";
 
 import passport from "passport";
 import session from "express-session";
-import type { Express, RequestHandler } from "express";
+import type { Express } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
+import type { SessionUser } from "./identity";
 
-if (!process.env.GOOGLE_CLIENT_ID) {
-  throw new Error("GOOGLE_CLIENT_ID must be set");
+const isProduction = process.env.NODE_ENV === "production";
+
+function googleConfigured(): boolean {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.OAUTH_CALLBACK_URL);
 }
-if (!process.env.GOOGLE_CLIENT_SECRET) {
-  throw new Error("GOOGLE_CLIENT_SECRET must be set");
-}
-if (!process.env.OAUTH_CALLBACK_URL) {
-  throw new Error("OAUTH_CALLBACK_URL must be set (e.g. https://yourdomain.com/api/callback)");
+
+function resolveSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret && secret.length >= 32) return secret;
+  if (isProduction) {
+    throw new Error("SESSION_SECRET must be set to at least 32 characters in production");
+  }
+  console.warn("[auth] SESSION_SECRET missing or short; using a random dev-only secret (sessions reset on restart).");
+  return crypto.randomBytes(32).toString("hex");
 }
 
 const getOidcConfig = memoize(
@@ -38,38 +46,18 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
-  const isProduction = process.env.NODE_ENV === "production";
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: resolveSessionSecret(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? "none" as const : "lax" as const,
+      // "lax" keeps the cookie off cross-site POSTs, which is our main CSRF defence.
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
-  });
-}
-
-function updateUserSession(
-  user: any,
-  tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
-) {
-  user.claims = tokens.claims();
-  user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token;
-  user.expires_at = user.claims?.exp;
-}
-
-async function upsertUser(claims: any) {
-  await authStorage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["given_name"],
-    lastName: claims["family_name"],
-    profileImageUrl: claims["picture"],
   });
 }
 
@@ -79,46 +67,9 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  const config = await getOidcConfig();
-
-  const verify: VerifyFunction = async (
-    tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
-    verified: passport.AuthenticateCallback
-  ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
-  };
-
-  const strategy = new Strategy(
-    {
-      name: "google",
-      config,
-      scope: "openid email profile",
-      callbackURL: process.env.OAUTH_CALLBACK_URL!,
-    },
-    verify
-  );
-  passport.use(strategy);
-
+  // Only the user id lives in the session; profile data is read from the users table.
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
-
-  app.get("/api/login", (req, res, next) => {
-    passport.authenticate("google", {
-      prompt: "consent",
-      scope: ["openid", "email", "profile"],
-      accessType: "offline",
-    } as any)(req, res, next);
-  });
-
-  app.get("/api/callback", (req, res, next) => {
-    passport.authenticate("google", {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
-    })(req, res, next);
-  });
 
   app.get("/api/logout", (req, res) => {
     req.logout(() => {
@@ -127,33 +78,64 @@ export async function setupAuth(app: Express) {
       });
     });
   });
+
+  if (!googleConfigured()) {
+    if (isProduction) {
+      throw new Error("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and OAUTH_CALLBACK_URL must be set");
+    }
+    console.warn("[auth] Google OAuth not configured; /api/login is disabled. Email/password sign-in still works.");
+    app.get("/api/login", (_req, res) => {
+      res.status(503).json({ message: "Google sign-in is not configured on this server" });
+    });
+    return;
+  }
+
+  const config = await getOidcConfig();
+
+  const verify: VerifyFunction = async (
+    tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
+    verified: passport.AuthenticateCallback
+  ) => {
+    try {
+      const claims = tokens.claims();
+      if (!claims?.sub) return verified(new Error("Google did not return a subject"));
+      await authStorage.upsertUser({
+        id: claims.sub,
+        email: claims.email as string | undefined,
+        firstName: claims.given_name as string | undefined,
+        lastName: claims.family_name as string | undefined,
+        profileImageUrl: claims.picture as string | undefined,
+      });
+      const user: SessionUser = { id: claims.sub };
+      verified(null, user);
+    } catch (err) {
+      verified(err as Error);
+    }
+  };
+
+  passport.use(
+    new Strategy(
+      {
+        name: "google",
+        config,
+        scope: "openid email profile",
+        callbackURL: process.env.OAUTH_CALLBACK_URL!,
+      },
+      verify
+    )
+  );
+
+  app.get("/api/login", (req, res, next) => {
+    // We only need identity, so no offline access and no forced consent screen.
+    passport.authenticate("google", {
+      scope: ["openid", "email", "profile"],
+    })(req, res, next);
+  });
+
+  app.get("/api/callback", (req, res, next) => {
+    passport.authenticate("google", {
+      successReturnToOrRedirect: "/",
+      failureRedirect: "/auth?error=login_failed",
+    })(req, res, next);
+  });
 }
-
-export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const user = req.user as any;
-
-  if (!req.isAuthenticated() || !user.expires_at) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
-  }
-
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-};
