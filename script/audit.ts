@@ -157,7 +157,8 @@ uxAdd("Images set decoding/async + lazy loading for performance", /decoding="asy
 // Discovery & shopping needs of the audience
 uxAdd("Wishlist / save-for-later available from the feed", /useToggleFavorite/.test(productCard) && /Heart/.test(productCard));
 uxAdd("Price shown up-front on product cards", /formatPrice/.test(productCard) && /minPrice/.test(productCard));
-uxAdd("Indian (₹) and US ($) currency both formatted", /₹/.test(productCard) && /toFixed\(2\)/.test(productCard) && /toLocaleString\('en-IN'\)/.test(productCard));
+const formatLib = read("client/src/lib/format.ts");
+uxAdd("Indian (₹) and US ($) currency both formatted", /formatPrice\(/.test(productCard) && /₹/.test(formatLib) && /toFixed\(2\)/.test(formatLib) && /toLocaleString\("en-IN"\)/.test(formatLib));
 uxAdd("Category filter chips on home feed", /FILTERS/.test(home) && /Skincare/.test(home));
 uxAdd("Search experience exists", /export default function Search/.test(search));
 uxAdd("Side-by-side product comparison exists", /Compare/.test(compare) && /comparisonData/.test(compare));

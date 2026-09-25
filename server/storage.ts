@@ -1,7 +1,7 @@
 import { db } from "./db";
 import {
   users, products, retailers, productOffers, productVideos, clicks, influencerMentions,
-  productTrustScores, productReviewSummaries, priceTrackers, priceHistory, favorites,
+  productTrustScores, productReviewSummaries, priceTrackers, priceHistory, favorites, productVariants,
   type User, type InsertUser, type UpdateUserRequest,
   type Product, type ProductWithDetails, type ProductWithPriceRange, type InsertClick, type InfluencerMention,
   type ProductTrustScore, type InsertTrustScore, type ProductReviewSummary, type InsertReviewSummary,
@@ -9,6 +9,28 @@ import {
   type Favorite
 } from "@shared/schema";
 import { eq, gt, desc, and, sql, inArray, or, ilike } from "drizzle-orm";
+import { summarizeOffers } from "./lib/offers";
+
+/** Attaches the buyable price range to each product with one offers query (no N+1). */
+async function withPriceRanges(productList: Product[]): Promise<ProductWithPriceRange[]> {
+  if (productList.length === 0) return [];
+  const allOffers = await db
+    .select()
+    .from(productOffers)
+    .where(inArray(productOffers.productId, productList.map((p) => p.id)));
+
+  const offersByProductId = new Map<number, typeof allOffers>();
+  for (const offer of allOffers) {
+    const existing = offersByProductId.get(offer.productId) || [];
+    existing.push(offer);
+    offersByProductId.set(offer.productId, existing);
+  }
+
+  return productList.map((product) => ({
+    ...product,
+    ...summarizeOffers(offersByProductId.get(product.id) || []),
+  }));
+}
 
 export interface IStorage {
   // User
@@ -103,38 +125,11 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(products)
       .where(eq(products.country, country))
-      .orderBy(desc(products.influencerCount), desc(products.lastInfluencerRefresh));
+      .orderBy(sql`${products.launchedAt} desc nulls last`, desc(products.influencerCount), desc(products.createdAt));
 
     if (productList.length === 0) return [];
 
-    // Fetch all offers for these products in a single query instead of N+1
-    const productIds = productList.map(p => p.id);
-    const allOffers = await db
-      .select()
-      .from(productOffers)
-      .where(inArray(productOffers.productId, productIds));
-
-    // Group offers by product ID
-    const offersByProductId = new Map<number, typeof allOffers>();
-    for (const offer of allOffers) {
-      const existing = offersByProductId.get(offer.productId) || [];
-      existing.push(offer);
-      offersByProductId.set(offer.productId, existing);
-    }
-
-    return productList.map((product) => {
-      const offers = offersByProductId.get(product.id) || [];
-      if (offers.length === 0) {
-        return { ...product, minPrice: null, maxPrice: null, currency: null };
-      }
-      const prices = offers.map(o => o.price);
-      return {
-        ...product,
-        minPrice: Math.min(...prices),
-        maxPrice: Math.max(...prices),
-        currency: offers[0].currency,
-      };
-    });
+    return withPriceRanges(productList);
   }
 
   async getProduct(id: number): Promise<ProductWithDetails | undefined> {
@@ -148,13 +143,19 @@ export class DatabaseStorage implements IStorage {
       }
     });
 
-    const videos = await db.select().from(productVideos).where(eq(productVideos.productId, id));
+    const videos = await db.select().from(productVideos)
+      .where(eq(productVideos.productId, id))
+      .orderBy(sql`${productVideos.publishedAt} desc nulls last`);
+    const variants = await db.select().from(productVariants)
+      .where(eq(productVariants.productId, id))
+      .orderBy(productVariants.position);
     
     const influencers = await db.select().from(influencerMentions).where(eq(influencerMentions.productId, id));
 
     return {
       ...product,
       offers,
+      variants,
       videos,
       influencers
     };
@@ -182,32 +183,7 @@ export class DatabaseStorage implements IStorage {
 
     if (productList.length === 0) return [];
 
-    const productIds = productList.map(p => p.id);
-    const allOffers = await db
-      .select()
-      .from(productOffers)
-      .where(inArray(productOffers.productId, productIds));
-
-    const offersByProductId = new Map<number, typeof allOffers>();
-    for (const offer of allOffers) {
-      const existing = offersByProductId.get(offer.productId) || [];
-      existing.push(offer);
-      offersByProductId.set(offer.productId, existing);
-    }
-
-    return productList.map((product) => {
-      const offers = offersByProductId.get(product.id) || [];
-      if (offers.length === 0) {
-        return { ...product, minPrice: null, maxPrice: null, currency: null };
-      }
-      const prices = offers.map(o => o.price);
-      return {
-        ...product,
-        minPrice: Math.min(...prices),
-        maxPrice: Math.max(...prices),
-        currency: offers[0].currency,
-      };
-    });
+    return withPriceRanges(productList);
   }
 
   async getAllProducts(): Promise<Product[]> {
@@ -343,29 +319,7 @@ export class DatabaseStorage implements IStorage {
     const productList = await db.select().from(products)
       .where(inArray(products.id, productIds));
 
-    const allOffers = await db.select().from(productOffers)
-      .where(inArray(productOffers.productId, productIds));
-
-    const offersByProductId = new Map<number, typeof allOffers>();
-    for (const offer of allOffers) {
-      const existing = offersByProductId.get(offer.productId) || [];
-      existing.push(offer);
-      offersByProductId.set(offer.productId, existing);
-    }
-
-    return productList.map((product) => {
-      const offers = offersByProductId.get(product.id) || [];
-      if (offers.length === 0) {
-        return { ...product, minPrice: null, maxPrice: null, currency: null };
-      }
-      const prices = offers.map(o => o.price);
-      return {
-        ...product,
-        minPrice: Math.min(...prices),
-        maxPrice: Math.max(...prices),
-        currency: offers[0].currency,
-      };
-    });
+    return withPriceRanges(productList);
   }
 
   async addFavorite(userId: string, productId: number): Promise<Favorite> {

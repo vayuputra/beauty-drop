@@ -11,7 +11,30 @@ export const retailers = pgTable("retailers", {
   name: text("name").notNull(),
   country: text("country").notNull(), // 'IN' or 'US'
   logoUrl: text("logo_url"),
+  // Storefront host, e.g. "www.nykaa.com" or a brand's own "rarebeauty.com".
+  domain: text("domain"),
+  // "retailer" (multi-brand store / marketplace) or "brand" (the brand's own store).
+  kind: text("kind").notNull().default("retailer"),
 });
+
+/**
+ * Brand-owned storefronts we watch for new launches. Today only Shopify stores
+ * are supported (their public /products.json feed lists products with launch dates).
+ */
+export const brandSources = pgTable("brand_sources", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  domain: text("domain").notNull(),
+  platform: text("platform").notNull().default("shopify"),
+  country: text("country").notNull(), // market the store sells to: 'IN' or 'US'
+  currency: text("currency").notNull(), // 'INR' or 'USD'
+  active: boolean("active").notNull().default(true),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_brand_sources_domain").on(table.domain),
+]);
 
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
@@ -30,8 +53,19 @@ export const products = pgTable("products", {
   }>(),
   influencerCount: integer("influencer_count").default(0),
   lastInfluencerRefresh: timestamp("last_influencer_refresh"),
+  // Stable identity in the source that created the product, e.g. "shopify:rarebeauty.com:8123".
+  sourceKey: text("source_key"),
+  brandSourceId: integer("brand_source_id").references(() => brandSources.id),
+  // Canonical product page on the brand's site.
+  productUrl: text("product_url"),
+  // When the product went on sale (the brand's publish date), used for "new drop" ordering.
+  launchedAt: timestamp("launched_at"),
+  lastPriceCheckAt: timestamp("last_price_check_at"),
+  lastContentCheckAt: timestamp("last_content_check_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
+  uniqueIndex("uq_products_source_key").on(table.sourceKey),
+  index("idx_products_launched").on(table.launchedAt),
   index("idx_products_country").on(table.country),
   index("idx_products_category").on(table.category),
   index("idx_products_brand").on(table.brand),
@@ -45,7 +79,45 @@ export const productOffers = pgTable("product_offers", {
   currency: text("currency").notNull(), // 'INR' or 'USD'
   affiliateUrl: text("affiliate_url").notNull(),
   lastUpdated: timestamp("last_updated").defaultNow(),
-});
+  // Where the price came from: "brand_site", "google_shopping", "manual" or "demo" (placeholder).
+  source: text("source").notNull().default("demo"),
+  // Regular price when the offer is discounted (shown struck through).
+  listPrice: doublePrecision("list_price"),
+  // null = unknown.
+  inStock: boolean("in_stock"),
+}, (table) => [
+  uniqueIndex("uq_offers_product_retailer").on(table.productId, table.retailerId),
+]);
+
+/** Shades / sizes. Variant ids also power cart permalinks for the checkout agent later. */
+export const productVariants = pgTable("product_variants", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  externalId: text("external_id").notNull(),
+  title: text("title").notNull(),
+  sku: text("sku"),
+  gtin: text("gtin"),
+  price: doublePrecision("price"),
+  listPrice: doublePrecision("list_price"),
+  available: boolean("available"),
+  imageUrl: text("image_url"),
+  position: integer("position").notNull().default(0),
+}, (table) => [
+  uniqueIndex("uq_variants_product_external").on(table.productId, table.externalId),
+]);
+
+/** One row per scheduled/background job run, for observability. */
+export const ingestionRuns = pgTable("ingestion_runs", {
+  id: serial("id").primaryKey(),
+  job: text("job").notNull(), // "launches" | "prices" | "content"
+  status: text("status").notNull(), // "running" | "success" | "partial" | "failed"
+  stats: jsonb("stats").$type<Record<string, number>>(),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+}, (table) => [
+  index("idx_ingestion_runs_job").on(table.job, table.startedAt),
+]);
 
 export const productVideos = pgTable("product_videos", {
   id: serial("id").primaryKey(),
@@ -58,7 +130,14 @@ export const productVideos = pgTable("product_videos", {
   creatorName: text("creator_name"), // Influencer name
   creatorHandle: text("creator_handle"), // @handle
   creatorFollowers: text("creator_followers"), // e.g. "2.5M"
-});
+  // Platform id (YouTube video id). Present for videos fetched from a platform API.
+  externalId: text("external_id"),
+  channelId: text("channel_id"),
+  publishedAt: timestamp("published_at"),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_videos_product_platform_external").on(table.productId, table.platform, table.externalId),
+]);
 
 export const clicks = pgTable("clicks", {
   id: serial("id").primaryKey(),
@@ -151,6 +230,7 @@ export const priceHistory = pgTable("price_history", {
   retailerId: integer("retailer_id").notNull().references(() => retailers.id),
   price: doublePrecision("price").notNull(),
   currency: text("currency").notNull(),
+  source: text("source"),
   observedAt: timestamp("observed_at").defaultNow(),
 });
 
@@ -230,6 +310,7 @@ export const comparisons = pgTable("comparisons", {
 // Relations
 export const productRelations = relations(products, ({ one, many }) => ({
   offers: many(productOffers),
+  variants: many(productVariants),
   videos: many(productVideos),
   influencers: many(influencerMentions),
   trustScore: one(productTrustScores),
@@ -290,6 +371,13 @@ export const offerRelations = relations(productOffers, ({ one }) => ({
   }),
 }));
 
+export const variantRelations = relations(productVariants, ({ one }) => ({
+  product: one(products, {
+    fields: [productVariants.productId],
+    references: [products.id],
+  }),
+}));
+
 export const videoRelations = relations(productVideos, ({ one }) => ({
   product: one(products, {
     fields: [productVideos.productId],
@@ -341,6 +429,9 @@ export type Favorite = typeof favorites.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type ProductArticle = typeof productArticles.$inferSelect;
 export type Comparison = typeof comparisons.$inferSelect;
+export type BrandSource = typeof brandSources.$inferSelect;
+export type ProductVariant = typeof productVariants.$inferSelect;
+export type IngestionRun = typeof ingestionRuns.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -355,6 +446,7 @@ export type InsertPriceHistory = z.infer<typeof insertPriceHistorySchema>;
 
 export type ProductWithDetails = Product & {
   offers: (ProductOffer & { retailer: Retailer })[];
+  variants: ProductVariant[];
   videos: ProductVideo[];
   influencers: InfluencerMention[];
   trustScore?: ProductTrustScore | null;
@@ -365,6 +457,8 @@ export type ProductWithPriceRange = Product & {
   minPrice: number | null;
   maxPrice: number | null;
   currency: string | null;
+  /** Every known offer is sold out. */
+  soldOut?: boolean;
   trustScore?: number | null;
 };
 

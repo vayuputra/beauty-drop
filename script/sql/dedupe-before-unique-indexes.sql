@@ -21,3 +21,10 @@ DELETE FROM product_articles a USING product_articles b
   WHERE a.product_id = b.product_id AND a.url = b.url AND a.id > b.id;
 
 COMMIT;
+
+-- Phase 1: one offer per (product, retailer). Keep the most recently updated.
+BEGIN;
+DELETE FROM product_offers a USING product_offers b
+  WHERE a.product_id = b.product_id AND a.retailer_id = b.retailer_id
+    AND (COALESCE(a.last_updated, 'epoch'::timestamp), a.id) < (COALESCE(b.last_updated, 'epoch'::timestamp), b.id);
+COMMIT;

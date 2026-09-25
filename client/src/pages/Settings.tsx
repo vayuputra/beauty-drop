@@ -2,7 +2,7 @@ import { useUser, useUpdateUser } from "@/hooks/use-user";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
-import { Globe, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
+import { Database, Globe, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { clsx } from "clsx";
 
@@ -104,6 +104,13 @@ export default function Settings() {
                 icon={BarChart3}
                 label="Analytics Dashboard"
                 onClick={() => setLocation("/analytics")}
+              />
+            )}
+            {user.isAdmin && (
+              <MenuItem
+                icon={Database}
+                label="Data & ingestion"
+                onClick={() => setLocation("/admin")}
               />
             )}
           </div>

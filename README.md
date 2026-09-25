@@ -72,6 +72,25 @@ psql "$DATABASE_URL" -f script/sql/dedupe-before-unique-indexes.sql
 npm run db:push
 ```
 
+## Live data
+
+Three background jobs fill the catalog with real data. Each runs in short, time-boxed batches
+so it fits in one serverless call:
+
+| Job | Source | Needs |
+|---|---|---|
+| `launches` | Brand-owned Shopify stores (`/products.json`): new products, shades, official prices and stock | nothing; add stores on the admin page |
+| `prices` | Google Shopping via SerpAPI: prices at other sellers | `SERPAPI_KEY` |
+| `content` | YouTube Data API: creator review videos | `YOUTUBE_API_KEY` |
+
+Operators (`ADMIN_EMAILS`) manage the watched brand stores, run jobs and see each run's result at
+**Profile → Data & ingestion** (`/admin`).
+
+**Scheduling.** Vercel Hobby allows one daily cron, which calls `/api/cron/daily` (a slice of every
+job, then price alerts). For hourly updates, `.github/workflows/scheduled-jobs.yml` calls
+`/api/cron/ingest/:job`. To turn it on, set the repository variable `APP_URL` and the secret
+`CRON_SECRET`.
+
 ## Testing
 
 ```bash

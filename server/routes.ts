@@ -7,7 +7,7 @@ import { setupAuth, isAuthenticated, isAdmin, getUserId, isAdminUser } from "./a
 import { isAdminEmail } from "./auth/identity";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, count, inArray } from "drizzle-orm";
-import { products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
+import { brandSources, products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
 import { handleImageProxy } from "./lib/imageProxy";
@@ -16,11 +16,16 @@ import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
 import { generateSmartLink } from "./services/deepLinks";
 import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./services/weeklyDigest";
-import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth, isPriceFetcherConfigured, updateProductPricesFromFetch } from "./services/priceFetcher";
+import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
 import { fetchArticlesForProduct } from "./services/articles";
 import { cache, CACHE_TTL } from "./services/cache";
 import { checkPricesForAllTrackers } from "./services/priceChecker";
 import { isValidCronRequest } from "./lib/cron";
+import { runJob, recentRuns, listBrandSources, JOB_NAMES, type JobName } from "./ingest/jobs";
+import { isGoogleShoppingConfigured } from "./ingest/googleShopping";
+import { isYouTubeConfigured } from "./ingest/youtube";
+import { normalizeDomain } from "./ingest/http";
+import { DEFAULT_BRAND_SOURCES } from "./ingest/defaultBrandSources";
 import bcrypt from "bcryptjs";
 
 function parseProductId(id: string): number | null {
@@ -196,89 +201,28 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  // Discover creator mentions for one product. Signed-in users can trigger it, but
-  // results are reused for 24h so repeated taps don't each spend an AI call.
+  // Fetch creator videos for one product from YouTube. Background jobs normally
+  // keep these fresh; this lets a signed-in user fill in a product that has none yet.
   app.post("/api/products/:id/refresh-influencers", isAuthenticated, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
-    const product = await storage.getProduct(productId);
+    const [product] = await db.select().from(products).where(eq(products.id, productId));
+    if (!product) return res.status(404).json({ error: "Product not found" });
 
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
+    if (!isYouTubeConfigured()) {
+      return res.json({ success: false, videosFound: 0, message: "Creator videos are not available yet" });
+    }
+    if (isFresh(product.lastContentCheckAt, ENRICHMENT_TTL.influencers) && !(await isAdminUser(getUserId(req)))) {
+      return res.json({ success: true, cached: true, videosFound: product.influencerCount ?? 0 });
     }
 
-    if (isFresh(product.lastInfluencerRefresh, ENRICHMENT_TTL.influencers) && !(await isAdminUser(getUserId(req)))) {
-      return res.json({
-        success: true,
-        cached: true,
-        influencersFound: product.influencers?.length ?? 0,
-        influencers: product.influencers ?? [],
-      });
-    }
-
-    try {
-      // Log the refresh attempt
-      await db.insert(refreshLogs).values({
-        productId,
-        refreshType: 'influencers',
-        status: 'pending',
-        message: 'Starting influencer discovery...'
-      });
-
-      // Search for influencers using Perplexity AI
-      const influencers = await searchInfluencersForProduct(
-        product.name,
-        product.brand,
-        product.country
-      );
-
-      // Clear existing influencer mentions for this product
-      await storage.clearInfluencersForProduct(productId);
-
-      // Add new influencer mentions
-      for (const inf of influencers) {
-        await storage.addInfluencerMention(productId, {
-          name: inf.name,
-          handle: inf.handle,
-          platform: inf.platform,
-          followers: inf.followers,
-          videoUrl: inf.videoUrl,
-          videoTitle: inf.videoTitle,
-          thumbnailUrl: inf.thumbnailUrl || null,
-          embedUrl: inf.embedUrl || null
-        });
-      }
-
-      // Update product's influencer count
-      await storage.updateProductInfluencerCount(productId, influencers.length);
-      cache.invalidate(`product:${productId}`);
-      cache.invalidatePattern("drops:");
-
-      // Log success
-      await db.insert(refreshLogs).values({
-        productId,
-        refreshType: 'influencers',
-        status: 'success',
-        message: `Found ${influencers.length} influencers`
-      });
-
-      res.json({ 
-        success: true, 
-        influencersFound: influencers.length,
-        influencers 
-      });
-    } catch (error) {
-      console.error("Error refreshing influencers:", error);
-      
-      await db.insert(refreshLogs).values({
-        productId,
-        refreshType: 'influencers',
-        status: 'failed',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-
-      res.status(500).json({ error: "Failed to refresh influencers" });
-    }
+    const run = await runJob("content", 20_000, { productId });
+    const found = run.stats?.videos ?? 0;
+    res.json({
+      success: run.status === "success",
+      videosFound: found,
+      message: run.status === "success" ? (found > 0 ? `Found ${found} videos` : "No videos about this product yet") : "Could not load videos right now",
+    });
   });
 
   // Refresh product image from official sources (operator tool)
@@ -347,50 +291,33 @@ export async function registerRoutes(
     }
   });
 
-  // Refresh prices for a product from the live price fetcher. Reports honestly:
-  // if no live source is available, nothing is changed and the response says so.
+  // Refresh one product's prices: its brand store (if it came from one) and
+  // other sellers via Google Shopping. Reports honestly when nothing is live.
   app.post("/api/products/:id/refresh-prices", isAuthenticated, async (req, res) => {
     const productId = parseProductId(req.params.id);
     if (!productId) return res.status(400).json({ error: "Invalid product ID" });
-    const product = await storage.getProduct(productId);
+    const [product] = await db.select().from(products).where(eq(products.id, productId));
     if (!product) return res.status(404).json({ error: "Product not found" });
 
-    const lastChecked = product.offers
-      .map((o) => o.lastUpdated)
-      .filter((d): d is Date => !!d)
-      .sort((x, y) => new Date(y).getTime() - new Date(x).getTime())[0] ?? null;
-
-    if (!isPriceFetcherConfigured()) {
-      return res.json({ success: false, updated: 0, message: "Live prices are not available yet", lastChecked });
+    const hasBrandFeed = product.brandSourceId != null;
+    if (!isGoogleShoppingConfigured() && !hasBrandFeed) {
+      return res.json({ success: false, updated: 0, message: "Live prices are not available yet", lastChecked: product.lastPriceCheckAt });
     }
-    if (isFresh(lastChecked, 30 * 60 * 1000)) {
-      return res.json({ success: true, updated: 0, cached: true, message: "Prices were checked recently", lastChecked });
+    if (isFresh(product.lastPriceCheckAt, 30 * 60 * 1000)) {
+      return res.json({ success: true, updated: 0, cached: true, message: "Prices were checked recently", lastChecked: product.lastPriceCheckAt });
     }
 
-    let updated = 0;
-    try {
-      updated = await updateProductPricesFromFetch(productId);
-    } catch (error) {
-      console.error("Live price fetch failed:", error);
-    }
-
-    await db.insert(refreshLogs).values({
-      productId,
-      refreshType: "prices",
-      status: updated > 0 ? "success" : "failed",
-      message: updated > 0 ? `Updated ${updated} offers from live prices` : "No live prices returned",
-    });
-
-    if (updated > 0) {
-      cache.invalidate(`product:${productId}`);
-      cache.invalidatePattern("drops:");
-    }
+    const runs = [];
+    if (hasBrandFeed) runs.push(await runJob("launches", 12_000, { sourceId: product.brandSourceId! }));
+    if (isGoogleShoppingConfigured()) runs.push(await runJob("prices", 15_000, { productId }));
+    const updated = runs.reduce((n, r) => n + (r.stats?.offers ?? 0) + (r.stats?.updated ?? 0), 0);
+    const ok = runs.some((r) => r.status === "success");
 
     res.json({
-      success: updated > 0,
+      success: ok,
       updated,
-      message: updated > 0 ? `Updated ${updated} prices` : "Could not get live prices right now",
-      lastChecked: updated > 0 ? new Date().toISOString() : lastChecked,
+      message: ok ? "Prices updated" : "Could not get live prices right now",
+      lastChecked: ok ? new Date().toISOString() : product.lastPriceCheckAt,
     });
   });
 
@@ -1252,6 +1179,86 @@ export async function registerRoutes(
       cache.invalidatePattern(""); // clear all
     }
     res.json({ success: true, stats: cache.stats() });
+  });
+
+  // ====== INGESTION (operators) ======
+  app.get("/api/admin/brand-sources", isAdmin, async (_req, res) => {
+    res.json(await listBrandSources());
+  });
+
+  app.post("/api/admin/brand-sources", isAdmin, async (req, res) => {
+    const input = z.object({
+      name: z.string().trim().min(1).max(100),
+      domain: z.string().trim().min(3).max(253),
+      country: z.enum(["US", "IN"]),
+    }).safeParse(req.body);
+    if (!input.success) return res.status(400).json({ error: input.error.errors[0].message });
+    const domain = normalizeDomain(input.data.domain);
+    if (!domain) return res.status(400).json({ error: "Enter a store domain like brand.com" });
+    const [source] = await db.insert(brandSources).values({
+      name: input.data.name,
+      domain,
+      country: input.data.country,
+      currency: input.data.country === "IN" ? "INR" : "USD",
+    }).onConflictDoNothing({ target: brandSources.domain }).returning();
+    if (!source) return res.status(409).json({ error: "That store is already being watched" });
+    res.status(201).json(source);
+  });
+
+  app.post("/api/admin/brand-sources/defaults", isAdmin, async (_req, res) => {
+    const added = await db.insert(brandSources).values(DEFAULT_BRAND_SOURCES)
+      .onConflictDoNothing({ target: brandSources.domain }).returning();
+    res.json({ added: added.length });
+  });
+
+  app.patch("/api/admin/brand-sources/:id", isAdmin, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    const input = z.object({ active: z.boolean() }).safeParse(req.body);
+    if (!id || !input.success) return res.status(400).json({ error: "Invalid request" });
+    const [source] = await db.update(brandSources).set({ active: input.data.active }).where(eq(brandSources.id, id)).returning();
+    if (!source) return res.sendStatus(404);
+    res.json(source);
+  });
+
+  app.get("/api/admin/ingestion-runs", isAdmin, async (_req, res) => {
+    res.json({
+      runs: await recentRuns(30),
+      configured: {
+        launches: true,
+        prices: isGoogleShoppingConfigured(),
+        content: isYouTubeConfigured(),
+      },
+    });
+  });
+
+  app.post("/api/admin/jobs/:job", isAdmin, async (req, res) => {
+    const job = req.params.job as JobName;
+    if (!JOB_NAMES.includes(job)) return res.status(404).json({ error: "Unknown job" });
+    res.json(await runJob(job, 22_000));
+  });
+
+  // Scheduled jobs. Vercel Cron calls these with `Authorization: Bearer $CRON_SECRET`.
+  // Each run does a time-boxed batch so it fits in one serverless invocation.
+  app.get("/api/cron/ingest/:job", async (req, res) => {
+    if (!isValidCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const job = req.params.job as JobName;
+    if (!JOB_NAMES.includes(job)) return res.status(404).json({ error: "Unknown job" });
+    res.json(await runJob(job, 22_000));
+  });
+
+  // Daily catch-all for Vercel Hobby (one daily cron): a short slice of every job, then alerts.
+  app.get("/api/cron/daily", async (req, res) => {
+    if (!isValidCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const runs = [];
+    runs.push(await runJob("launches", 9_000));
+    runs.push(await runJob("prices", 7_000));
+    runs.push(await runJob("content", 5_000));
+    const alerts = await checkPricesForAllTrackers();
+    res.json({ runs, alerts });
   });
 
   // Scheduled jobs. Vercel Cron calls these with `Authorization: Bearer $CRON_SECRET`.

@@ -4,17 +4,12 @@ import { type ProductWithPriceRange } from "@shared/schema";
 import { motion } from "framer-motion";
 import { useFavoriteIds, useToggleFavorite } from "@/hooks/use-drops";
 import { ProductImage } from "@/components/ProductImage";
+import { formatPrice, isNewLaunch } from "@/lib/format";
 
 interface ProductCardProps {
   product: ProductWithPriceRange;
 }
 
-function formatPrice(price: number, currency: string): string {
-  if (currency === 'INR') {
-    return `₹${Math.round(price).toLocaleString('en-IN')}`;
-  }
-  return `$${price.toFixed(2)}`;
-}
 
 export function ProductCard({ product }: ProductCardProps) {
   const { data: favoriteIds } = useFavoriteIds();
@@ -42,9 +37,14 @@ export function ProductCard({ product }: ProductCardProps) {
           className="aspect-[4/5] bg-secondary/30"
           imgClassName="transition-transform duration-700 group-hover:scale-105"
         >
-          {/* Category Badge */}
-          <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
-            <span className="text-xs font-bold text-foreground tracking-wide uppercase">
+          {/* Category / status badges */}
+          <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+            {isNewLaunch(product.launchedAt) && (
+              <span className="bg-accent text-white px-3 py-1 rounded-full shadow-sm text-xs font-bold tracking-wide uppercase">
+                New
+              </span>
+            )}
+            <span className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm text-xs font-bold text-foreground tracking-wide uppercase">
               {product.category}
             </span>
           </div>
@@ -76,9 +76,13 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {/* Price Display */}
           {product.minPrice != null && product.currency && (
-            <p className="text-sm font-semibold text-accent mb-3">
-              Starting at {formatPrice(product.minPrice, product.currency)}
-            </p>
+            product.soldOut ? (
+              <p className="text-sm font-semibold text-muted-foreground mb-3">Sold out everywhere</p>
+            ) : (
+              <p className="text-sm font-semibold text-accent mb-3">
+                Starting at {formatPrice(product.minPrice, product.currency)}
+              </p>
+            )
           )}
 
           <div className="flex items-center justify-between mt-4 gap-2">

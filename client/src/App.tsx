@@ -18,6 +18,7 @@ import NotificationsPage from "@/pages/Notifications";
 import ComparePage from "@/pages/Compare";
 import AnalyticsPage from "@/pages/Analytics";
 import DigestPage from "@/pages/Digest";
+import AdminPage from "@/pages/Admin";
 
 function Router() {
   return (
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/compare" component={ComparePage} />
       <Route path="/analytics" component={AnalyticsPage} />
       <Route path="/digest" component={DigestPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );

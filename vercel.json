@@ -31,7 +31,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/price-check",
+      "path": "/api/cron/daily",
       "schedule": "15 6 * * *"
     }
   ]

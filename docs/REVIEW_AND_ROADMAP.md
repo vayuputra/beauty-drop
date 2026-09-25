@@ -255,6 +255,30 @@ This is the feature that sets the product apart, and the one with the most risk.
 - Splitting `routes.ts` by domain.
 - `rejectUnauthorized: false` on the database TLS connection.
 
+## Phase 1 status (2026-09-25)
+
+**Done:**
+- **Launch detection:** watches brand-owned Shopify stores and imports products published in the last 45 days, with shades and sizes, official price, "was" price, stock and launch date. The feed sorts new launches first. Gift cards, samples and add-ons are skipped.
+- **Seller prices:** Google Shopping via SerpAPI, run from Node (no Python service needed). It keeps the cheapest new-condition listing per seller, and a listing's title must name the brand and most of the product name, so dupes and similar products are rejected. Seller names map onto existing retailers ("Ulta" → "Ulta Beauty"). New launches are compared first. Placeholder demo prices are removed once real ones exist.
+- **Creator videos:** from the YouTube Data API, with real video ids, channels, dates and privacy-friendly embeds. Only videos about the product are kept, one per channel. They replace the AI-described "influencer" cards on the product page.
+- **Data model:**
+  - New tables: `brand_sources`, `product_variants`, `ingestion_runs`.
+  - Offers gain `source`, `in_stock` and `list_price`, and are unique per (product, retailer).
+  - Products gain `source_key`, `launched_at` and check timestamps.
+  - Price history records where each price came from.
+- **Jobs:** time-boxed batches that fit Vercel's limit, recorded in `ingestion_runs`. A daily Vercel cron catch-all, plus an hourly GitHub Actions schedule.
+- **Admin page** (`/admin`): run jobs, manage brand stores (with a starter list), and see recent runs and each store's last error.
+- **UI:** "New" badge, launch date, shade chips, "Official store" label, "Sold out" (sorted last), "was" prices, "Sold out everywhere" on cards, and real video cards.
+
+**Not verified yet:** the build sandbox can't reach brand stores, SerpAPI or YouTube. Everything is tested against recorded response shapes, so check the first real runs on the admin page. The starter brand list is unverified; a store that isn't on Shopify will show its error there.
+
+**Still open:**
+- Articles still come from Perplexity.
+- Reddit discussion data.
+- A price-history chart.
+- Matching the same product sold under several brand sources.
+- A `brands` table and GTINs (Shopify's public feed doesn't expose barcodes).
+
 ## 6. Phased plan
 
 | Phase | Scope | Outcome |

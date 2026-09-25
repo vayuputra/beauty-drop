@@ -15,6 +15,8 @@ class MemoryCache {
   constructor() {
     // Cleanup expired entries every 5 minutes
     this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    // Don't keep scripts and test runners alive just for cache cleanup.
+    this.cleanupInterval.unref?.();
   }
 
   get<T>(key: string): T | null {

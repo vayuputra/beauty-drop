@@ -1,0 +1,49 @@
+name: Scheduled jobs
+
+# Runs ingestion more often than Vercel Hobby's once-a-day cron allows.
+# Needs repository settings:
+#   Variables → APP_URL      e.g. https://beauty-drop.vercel.app
+#   Secrets   → CRON_SECRET  same value as the Vercel environment variable
+on:
+  schedule:
+    - cron: "7 * * * *"       # launches + prices, hourly
+    - cron: "37 */3 * * *"    # creator videos, every 3 hours (YouTube quota)
+    - cron: "52 */6 * * *"    # price-drop alerts, every 6 hours
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run"
+        required: true
+        default: launches
+        type: choice
+        options: [launches, prices, content, price-check]
+
+jobs:
+  run:
+    if: vars.APP_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Pick jobs
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "jobs=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "7 * * * *" ]; then
+            echo "jobs=launches prices" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "37 */3 * * *" ]; then
+            echo "jobs=content" >> "$GITHUB_OUTPUT"
+          else
+            echo "jobs=price-check" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Call app
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          for job in ${{ steps.pick.outputs.jobs }}; do
+            if [ "$job" = "price-check" ]; then path="/api/cron/price-check"; else path="/api/cron/ingest/$job"; fi
+            echo "→ $path"
+            curl --fail-with-body -sS -m 60 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL$path"
+            echo
+          done

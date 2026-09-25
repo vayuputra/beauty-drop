@@ -12,7 +12,8 @@ import { ProductImage } from "@/components/ProductImage";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { formatPrice, offerSourceLabel, sortOffers } from "@/lib/format";
 
 /** Retailer logo with a letter avatar when there is no logo or it fails to load. */
 function RetailerLogo({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
@@ -68,7 +69,9 @@ export default function ProductDetails() {
     }
   };
 
-  const sortedOffers = [...(product.offers ?? [])].sort((a: any, b: any) => a.price - b.price);
+  const sortedOffers = sortOffers<any>(product.offers ?? []);
+  const buyableCount = sortedOffers.filter((o: any) => o.inStock !== false).length;
+  const variants: any[] = product.variants ?? [];
 
   const handleRefreshInfluencers = async () => {
     await refreshInfluencers.mutateAsync(product.id);
@@ -118,20 +121,7 @@ export default function ProductDetails() {
     }
   };
 
-  const allInfluencers = [
-    ...(product.influencers || []),
-    ...(product.videos || []).map((v: any) => ({
-      id: `video-${v.id}`,
-      name: v.creatorName,
-      handle: v.creatorHandle,
-      platform: v.platform,
-      followers: v.creatorFollowers,
-      videoUrl: v.videoUrl,
-      videoTitle: v.title,
-      thumbnailUrl: v.thumbnailUrl,
-      embedUrl: v.embedUrl
-    }))
-  ];
+  const videos: any[] = product.videos ?? [];
 
   return (
     <div className="min-h-screen bg-background pb-32 momentum-scroll">
@@ -191,13 +181,42 @@ export default function ProductDetails() {
             </span>
           </div>
           
-          <h1 data-testid="text-product-name" className="font-display text-3xl font-bold text-foreground leading-tight mb-4">
+          <h1 data-testid="text-product-name" className="font-display text-3xl font-bold text-foreground leading-tight mb-2">
             {product.name}
           </h1>
+          {product.launchedAt && (
+            <p className="text-xs font-medium uppercase tracking-wider text-accent mb-4">
+              Launched {format(new Date(product.launchedAt), "d MMM yyyy")}
+            </p>
+          )}
+          {!product.launchedAt && <div className="mb-2" />}
           
           <p className="text-muted-foreground leading-relaxed">
             {product.description}
           </p>
+
+          {variants.length > 1 && (
+            <div className="mt-5">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                {variants.length} shades &amp; sizes
+              </p>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
+                {variants.map((v) => (
+                  <span
+                    key={v.id}
+                    className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium ${
+                      v.available === false
+                        ? "border-border text-muted-foreground/60 line-through"
+                        : "border-foreground/20 text-foreground bg-white"
+                    }`}
+                    title={v.available === false ? "Sold out" : undefined}
+                  >
+                    {v.title}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* Why Trending */}
@@ -230,95 +249,71 @@ export default function ProductDetails() {
               <Users size={18} className="text-accent" />
               <h3 className="font-display text-xl font-bold">Product Videos</h3>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleRefreshInfluencers}
-              disabled={refreshInfluencers.isPending}
-              data-testid="button-refresh-influencers"
-              className="gap-2"
-            >
-              {refreshInfluencers.isPending ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              Discover
-            </Button>
+            {user?.isAdmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRefreshInfluencers}
+                disabled={refreshInfluencers.isPending}
+                data-testid="button-refresh-influencers"
+                className="gap-2"
+              >
+                {refreshInfluencers.isPending ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                Refresh
+              </Button>
+            )}
           </div>
 
-          {allInfluencers.length > 0 ? (
-            <div className="space-y-4">
-              {allInfluencers.slice(0, 5).map((influencer: any, index: number) => {
-                const PlatformIcon = getPlatformIcon(influencer.platform);
-                const platformColor = getPlatformColor(influencer.platform);
-                
+          {videos.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto no-scrollbar horizontal-scroll -mx-6 px-6 pb-2">
+              {videos.slice(0, 6).map((video, index) => {
+                const PlatformIcon = getPlatformIcon(video.platform);
                 return (
-                  <div 
-                    key={influencer.id || index}
-                    className="bg-white dark:bg-card rounded-xl border border-border shadow-sm overflow-hidden cursor-pointer hover:border-accent/50 transition-colors"
-                    data-testid={`influencer-card-${index}`}
-                    onClick={() => window.open(influencer.videoUrl, '_blank')}
+                  <a
+                    key={video.id}
+                    href={video.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0 w-60 group"
+                    data-testid={`video-card-${index}`}
                   >
-                    <div className="flex gap-4 p-3">
-                      {/* Thumbnail */}
-                      <div className="relative flex-shrink-0 w-20 aspect-video rounded-lg overflow-hidden bg-secondary">
-                        {influencer.thumbnailUrl ? (
-                          <img 
-                            src={influencer.thumbnailUrl} 
-                            alt={influencer.videoTitle || influencer.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <PlatformIcon size={24} className={platformColor} />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                          <div className="w-6 h-6 rounded-full bg-white/40 backdrop-blur-sm flex items-center justify-center">
-                            <Play size={10} fill="white" className="text-white ml-0.5" />
-                          </div>
+                    <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary">
+                      {video.thumbnailUrl ? (
+                        <img
+                          src={video.thumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <PlatformIcon size={28} className={getPlatformColor(video.platform)} />
                         </div>
-                        {/* Platform Badge */}
-                        <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white/90 flex items-center justify-center ${platformColor}`}>
-                          <PlatformIcon size={10} />
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                        <div className="w-10 h-10 rounded-full bg-white/85 backdrop-blur-sm flex items-center justify-center shadow">
+                          <Play size={16} fill="currentColor" className="text-foreground ml-0.5" />
                         </div>
-                      </div>
-                      
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 py-0.5">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
-                            {influencer.name?.charAt(0) || 'I'}
-                          </div>
-                          <p className="text-sm font-semibold text-foreground truncate">
-                            {influencer.name || 'Influencer'}
-                          </p>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mb-1">
-                          {influencer.handle} {influencer.followers && `• ${influencer.followers}`}
-                        </p>
-                        {influencer.videoTitle && (
-                          <p className="text-xs text-foreground/70 line-clamp-1">
-                            {influencer.videoTitle}
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* External link indicator */}
-                      <div className="flex items-center">
-                        <ExternalLink size={14} className="text-muted-foreground" />
                       </div>
                     </div>
-                  </div>
+                    <p className="mt-2 text-sm font-medium text-foreground line-clamp-2 leading-snug">{video.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                      {video.creatorName}
+                      {video.publishedAt && ` · ${formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })}`}
+                    </p>
+                  </a>
                 );
               })}
             </div>
           ) : (
             <div className="p-6 bg-secondary/30 rounded-xl text-center">
               <Users size={32} className="mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground mb-3">
-                No video reviews yet. Click "Discover" to find creators talking about this product.
+              <p className="text-sm text-muted-foreground">
+                No creator videos yet. They'll show up here as people review it.
               </p>
             </div>
           )}
@@ -572,29 +567,41 @@ export default function ProductDetails() {
                     <RetailerLogo name={offer.retailer.name} logoUrl={offer.retailer.logoUrl} />
                     <div>
                       <p className="font-semibold text-foreground">{offer.retailer.name}</p>
-                      {index === 0 && sortedOffers.length > 1 && (
-                        <p className="text-xs text-accent font-semibold">Best price</p>
+                      {offer.inStock === false ? (
+                        <p className="text-xs font-semibold text-destructive">Sold out</p>
+                      ) : (
+                        index === 0 && buyableCount > 1 && (
+                          <p className="text-xs text-accent font-semibold">Best price</p>
+                        )
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {offer.lastUpdated
-                          ? `Checked ${formatDistanceToNow(new Date(offer.lastUpdated), { addSuffix: true })}`
-                          : "Price not yet verified"}
+                        {[
+                          offerSourceLabel(offer.source, offer.retailer.kind),
+                          offer.source === "demo" || !offer.lastUpdated
+                            ? "Price not yet verified"
+                            : `Checked ${formatDistanceToNow(new Date(offer.lastUpdated), { addSuffix: true })}`,
+                        ].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-4">
-                    <span className="font-bold text-lg">
-                      {offer.currency === 'USD'
-                        ? `$${Number(offer.price).toFixed(2)}`
-                        : `₹${Math.round(Number(offer.price)).toLocaleString('en-IN')}`}
-                    </span>
+                    <div className="text-right">
+                      <span className={`block font-bold text-lg ${offer.inStock === false ? "text-muted-foreground" : ""}`}>
+                        {formatPrice(Number(offer.price), offer.currency)}
+                      </span>
+                      {offer.listPrice && offer.listPrice > offer.price && (
+                        <span className="block text-xs text-muted-foreground line-through">
+                          {formatPrice(Number(offer.listPrice), offer.currency)}
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleOfferClick(offer)}
                       data-testid={`button-buy-${offer.id}`}
                       className="bg-foreground text-background px-4 py-2 rounded-lg font-bold text-sm hover:bg-accent hover:text-white transition-colors flex items-center gap-2"
                     >
-                      Buy <ExternalLink size={14} />
+                      {offer.inStock === false ? "View" : "Buy"} <ExternalLink size={14} />
                     </button>
                   </div>
                 </div>
