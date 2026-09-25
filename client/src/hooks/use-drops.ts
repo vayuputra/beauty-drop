@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { api, buildUrl } from "@shared/routes";
+import type { ProductWithPriceRange } from "@shared/schema";
 
 // Get list of drops (products)
 export function useDrops(country?: string) {
@@ -287,7 +288,7 @@ export function usePriceHistory(productId: number) {
   return useQuery({
     queryKey: ['/api/products', productId, 'price-history'],
     queryFn: async () => {
-      const res = await apiFetch(`/api/products/${productId}/price-history`, {
+      const res = await apiFetch(`/api/products/${productId}/price-history?limit=365`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch price history");
@@ -347,7 +348,19 @@ export function useToggleFavorite() {
       if (!res.ok) throw new Error("Failed to toggle favorite");
       return await res.json();
     },
-    onSuccess: () => {
+    // Flip the heart immediately; roll back if the request fails.
+    onMutate: async ({ productId, isFavorited }) => {
+      await queryClient.cancelQueries({ queryKey: ['/api/favorites/ids'] });
+      const previous = queryClient.getQueryData<number[]>(['/api/favorites/ids']);
+      queryClient.setQueryData<number[]>(['/api/favorites/ids'], (ids = []) =>
+        isFavorited ? ids.filter((id) => id !== productId) : [...ids, productId],
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['/api/favorites/ids'], context.previous);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/favorites/ids'] });
       queryClient.invalidateQueries({ queryKey: ['/api/favorites'] });
     },
@@ -469,5 +482,37 @@ export function useWeeklyDigest(country?: string) {
       if (!res.ok) throw new Error("Failed to fetch digest");
       return await res.json();
     },
+  });
+}
+
+// The Today feed (hero, creator stories, launches, price drops, for you)
+export interface FeedStoryVideo {
+  id: number;
+  title: string | null;
+  creatorName: string | null;
+  thumbnailUrl: string | null;
+  videoUrl: string;
+  embedUrl: string | null;
+  publishedAt: string | null;
+}
+
+export interface FeedData {
+  hero: ProductWithPriceRange | null;
+  stories: { product: ProductWithPriceRange; videos: FeedStoryVideo[] }[];
+  justLaunched: ProductWithPriceRange[];
+  priceDrops: { productId: number; previousPrice: number; currentPrice: number; dropPercent: number; product: ProductWithPriceRange }[];
+  forYou: ProductWithPriceRange[];
+  total: number;
+}
+
+export function useFeed(country?: string) {
+  return useQuery<FeedData>({
+    queryKey: ["/api/feed", country],
+    queryFn: async () => {
+      const res = await apiFetch(country ? `/api/feed?country=${country}` : "/api/feed", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load your feed");
+      return await res.json();
+    },
+    enabled: !!country,
   });
 }

@@ -17,6 +17,8 @@ interface ProductImageProps {
   imgClassName?: string;
   /** Marks the hero image so it isn't lazy-loaded. */
   priority?: boolean;
+  /** Draw brand/name text on the fallback illustration (off where they're shown alongside). */
+  fallbackLabels?: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export function ProductImage({
   children,
   imgClassName = "",
   priority = false,
+  fallbackLabels = true,
 }: ProductImageProps) {
   // Build an ordered list of real-photo candidates to try, most-trusted first.
   const candidates = useMemo(() => {
@@ -44,7 +47,10 @@ export function ProductImage({
     return list;
   }, [product.imageUrl, product.imageCandidates]);
 
-  const svg = useMemo(() => generateProductSvgDataUri(product), [product.name, product.brand, product.category]);
+  const svg = useMemo(
+    () => generateProductSvgDataUri(product, { labels: fallbackLabels }),
+    [product.name, product.brand, product.category, fallbackLabels],
+  );
 
   // Index into `candidates`; once it passes the end we render the SVG fallback.
   const [index, setIndex] = useState(0);

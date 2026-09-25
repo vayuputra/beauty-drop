@@ -31,3 +31,13 @@ export function sortOffers<T extends { price: number; inStock?: boolean | null }
   const rank = (o: T) => (o.inStock === false ? 2 : o.inStock === true ? 0 : 1);
   return [...offers].sort((a, b) => rank(a) - rank(b) || a.price - b.price);
 }
+
+/** Compact relative time for dense rows: "just now", "5m ago", "3h ago", "2d ago". */
+export function timeAgoShort(date: string | Date, now = Date.now()): string {
+  const mins = Math.max(0, Math.round((now - new Date(date).getTime()) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}

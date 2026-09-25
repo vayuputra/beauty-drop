@@ -98,7 +98,7 @@ export default function Onboarding() {
                 "w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all duration-200",
                 formData.country === country.id
                   ? "border-accent bg-accent/5 shadow-md"
-                  : "border-border hover:border-accent/30 bg-white"
+                  : "border-border hover:border-accent/30 bg-card"
               )}
             >
               <span className="text-4xl">{country.flag}</span>
@@ -146,7 +146,7 @@ export default function Onboarding() {
                   "p-4 rounded-xl border-2 text-left font-medium transition-all duration-200",
                   isSelected
                     ? "border-accent bg-accent/10 text-accent-foreground"
-                    : "border-border bg-white text-muted-foreground hover:border-accent/30"
+                    : "border-border bg-card text-muted-foreground hover:border-accent/30"
                 )}
               >
                 {interest}
@@ -195,7 +195,7 @@ export default function Onboarding() {
                     "px-4 py-2 rounded-full text-sm border transition-colors",
                     formData.preferences.skinType === type
                       ? "bg-foreground text-background border-foreground"
-                      : "bg-white text-foreground border-border hover:border-foreground"
+                      : "bg-card text-foreground border-border hover:border-foreground"
                   )}
                 >
                   {type}
@@ -221,7 +221,7 @@ export default function Onboarding() {
                     "w-full p-3 rounded-xl border text-left transition-colors",
                     formData.preferences.budget === budget
                       ? "border-accent bg-accent/5 text-accent-foreground font-medium"
-                      : "border-border bg-white text-muted-foreground"
+                      : "border-border bg-card text-muted-foreground"
                   )}
                 >
                   {budget}

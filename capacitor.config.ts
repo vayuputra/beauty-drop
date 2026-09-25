@@ -1,22 +1,26 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+// CAP_DEV=1 (with CAP_SERVER_URL=http://<your-ip>:5000) points the app at a local dev
+// server and allows plain HTTP. Release builds stay HTTPS-only.
+const isDev = process.env.CAP_DEV === "1";
+
 const config: CapacitorConfig = {
   appId: 'com.beautydrop.app',
   appName: 'Beauty Drop',
   webDir: 'dist/public',
   server: {
-    // In production, the app bundles the frontend and talks to the remote backend.
-    // Set this to your deployed backend URL (e.g. https://beautydrop.example.com)
-    // For local development, use your machine's IP: http://192.168.x.x:5000
-    url: undefined, // Set at build time; when undefined, serves from bundled assets
-    cleartext: true, // Allow HTTP for local dev
+    url: isDev ? process.env.CAP_SERVER_URL : undefined,
+    cleartext: isDev,
     androidScheme: 'https',
   },
   android: {
     buildOptions: {
       signingType: 'apksigner',
     },
-    allowMixedContent: true,
+    allowMixedContent: isDev,
+  },
+  ios: {
+    contentInset: 'never',
   },
   plugins: {
     SplashScreen: {

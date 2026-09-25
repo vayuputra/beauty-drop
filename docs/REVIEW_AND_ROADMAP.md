@@ -279,6 +279,39 @@ This is the feature that sets the product apart, and the one with the most risk.
 - Matching the same product sold under several brand sources.
 - A `brands` table and GTINs (Shopify's public feed doesn't expose barcodes).
 
+## Phase 2 status (2026-09-25)
+
+**Done:**
+- **Navigation:** Today · Explore · Bag · You. It's a bottom tab bar on phones and a top bar on desktop. The Bag tab shows a count of saved products. Compare, Digest, Notifications and Admin moved under You.
+- **Today feed** (`/api/feed`, built on the server from real data):
+  - A "Drop of the day" hero: the newest launch that's in stock.
+  - A creator stories row. It opens a full-screen viewer with inline YouTube playback, tap and swipe navigation, and a "See prices" button.
+  - "Just launched", "Price dropped" (from price history, 5% or more at one seller) and "For you" (favourite categories first, with category chips).
+  - Pull-to-refresh and a loading skeleton.
+- **Product page, one scroll:**
+  - Swipeable photos that include shade images.
+  - A selectable shade picker that shows per-shade price and stock at the brand store.
+  - Creator video reels that play in a sheet.
+  - "The verdict" (AI review summary and trust score, shown only when they exist).
+  - A best-price-history sparkline across sellers, with hover/touch readout.
+  - Articles and community threads.
+- **Price bar pinned to the bottom:** best buyable price, "was" price, seller, a price-alert bell and Buy. Swiping it up opens every seller, cheapest in stock first. On desktop the same comparison is a side panel next to the photos.
+- **Manual buttons removed for users:** no more Refresh / Discover / Calculate / Generate / Track. Background jobs fill the data, and operators get a collapsed "Operator tools" panel.
+- **Bag:** price alerts (current price vs. when you started, remove) and saved products.
+- **Explore:** search plus category chips, most talked-about first.
+- **Dark mode:** a full token set, with an Auto / Light / Dark choice on the You screen. The native status bar and browser theme colour follow it.
+- **Haptics** on save, alerts, stories and buy (native only).
+- **Optimistic saves:** the heart fills immediately.
+- **Performance:** every screen except Today loads on demand, and product pages preload on hover or touch. The first-load bundle went from 184 kB to 170 kB gzipped.
+- **iOS project generated** (`ios/`, Swift Package Manager). Release builds are HTTPS-only.
+
+**Still open:**
+- Push notifications. They need Firebase (FCM) and Apple (APNs) credentials, plus a device-token table.
+- Native Google and Apple sign-in, and bearer-token sessions for the apps.
+- Opening a product link in a desktop browser and having it hand off to the app.
+- Server rendering of product pages for SEO and link previews.
+- The iOS project has never been compiled; that needs Xcode on a Mac.
+
 ## 6. Phased plan
 
 | Phase | Scope | Outcome |

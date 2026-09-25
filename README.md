@@ -13,7 +13,7 @@ Beauty Drop is a mobile-first web app that delivers weekly curated "drops" of tr
 - Price tracking with user-set alerts and 6-hour background checks
 - Weekly digest with price volatility and social mention tracking
 - Deep linking to native retailer apps via Android intents and iOS universal links
-- Android build via Capacitor
+- iOS and Android builds via Capacitor
 
 ## Tech Stack
 
@@ -22,7 +22,7 @@ Beauty Drop is a mobile-first web app that delivers weekly curated "drops" of tr
 - **Auth:** Google sign-in (OpenID Connect) and email/password via Passport.js, PostgreSQL session store
 - **Database:** PostgreSQL with Drizzle ORM (`shared/schema.ts`)
 - **AI:** OpenAI GPT-4o (review synthesis + image verification), Perplexity (influencer discovery)
-- **Mobile:** Capacitor for Android packaging
+- **Mobile:** Capacitor for iOS and Android
 
 ## Project Structure
 
@@ -108,7 +108,13 @@ Integration tests write to the database, so point `DATABASE_URL` at a disposable
 npm run build              # static client + server bundle
 npm run android:build      # Vite build + Capacitor sync
 npm run android:open       # open in Android Studio
+npm run ios:build          # Vite build + Capacitor sync (iOS)
+npm run ios:open           # open in Xcode (macOS only)
 ```
+
+Native builds bundle the web app and call the API at `VITE_API_BASE_URL`. To point a device at
+a local dev server instead, sync with `CAP_DEV=1 CAP_SERVER_URL=http://<your-ip>:5000`. Only dev
+builds allow plain HTTP.
 
 ## License
 

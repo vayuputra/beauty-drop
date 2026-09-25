@@ -155,8 +155,12 @@ function vesselSvg(p: Palette, sheenId: string): string {
   }
 }
 
-/** Build a self-contained SVG "beauty card" for a product. Deterministic, no network. */
-export function generateProductSvg(product: ProductImageInfo): string {
+/**
+ * Build a self-contained SVG "beauty card" for a product. Deterministic, no network.
+ * With `labels: false` it draws only the illustration, for places that already
+ * show the brand and name next to the image.
+ */
+export function generateProductSvg(product: ProductImageInfo, { labels = true }: { labels?: boolean } = {}): string {
   const p = paletteFor(product.category);
   const brand = escapeXml((product.brand || "").toUpperCase().slice(0, 26));
   const nameLines = wrap(escapeXml(product.name || "Product"), 22, 2);
@@ -187,18 +191,18 @@ export function generateProductSvg(product: ProductImageInfo): string {
   <circle cx="520" cy="520" r="90" fill="#ffffff" opacity="0.14"/>
   <text x="76" y="84" font-family="Georgia, 'Times New Roman', serif" font-size="26" fill="${p.accent}" opacity="0.55">✦</text>
   <text x="500" y="140" font-family="Georgia, serif" font-size="20" fill="${p.accent}" opacity="0.45">✦</text>
-  ${vesselSvg(p, sheenId)}
-  <text x="300" y="396" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3" fill="${p.accent}">${brand}</text>
+  ${labels ? vesselSvg(p, sheenId) : `<g transform="translate(0 70)">${vesselSvg(p, sheenId)}</g>`}
+  ${labels ? `<text x="300" y="396" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3" fill="${p.accent}">${brand}</text>
   <text x="300" y="438" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="28" font-weight="700" fill="${p.ink}">${nameTspans}</text>
   <g transform="translate(300 510)">
     <rect x="-92" y="-20" width="184" height="40" rx="20" fill="#ffffff" opacity="0.7"/>
     <text x="0" y="6" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="2" fill="${p.ink}">${category}</text>
   </g>
-  <text x="300" y="566" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="3" fill="${p.accent}" opacity="0.8">✦ BEAUTY DROP</text>
+  <text x="300" y="566" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="3" fill="${p.accent}" opacity="0.8">✦ BEAUTY DROP</text>` : ""}
 </svg>`;
 }
 
 /** SVG as a ready-to-use data URI for an <img src>. */
-export function generateProductSvgDataUri(product: ProductImageInfo): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(generateProductSvg(product))}`;
+export function generateProductSvgDataUri(product: ProductImageInfo, options?: { labels?: boolean }): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(generateProductSvg(product, options))}`;
 }

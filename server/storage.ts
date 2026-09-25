@@ -12,7 +12,7 @@ import { eq, gt, desc, and, sql, inArray, or, ilike } from "drizzle-orm";
 import { summarizeOffers } from "./lib/offers";
 
 /** Attaches the buyable price range to each product with one offers query (no N+1). */
-async function withPriceRanges(productList: Product[]): Promise<ProductWithPriceRange[]> {
+export async function withPriceRanges(productList: Product[]): Promise<ProductWithPriceRange[]> {
   if (productList.length === 0) return [];
   const allOffers = await db
     .select()

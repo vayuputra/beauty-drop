@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["server/**/*.test.ts", "test/**/*.test.ts"],
+    include: ["server/**/*.test.ts", "client/src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "node",
     // Integration tests share one database.
     fileParallelism: false,

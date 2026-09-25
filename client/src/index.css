@@ -10,35 +10,81 @@
   --safe-area-left: env(safe-area-inset-left, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
 
-  /* Soft, Premium Pink & White Theme */
-  --background: 0 0% 100%;       /* #FFFFFF */
-  --foreground: 330 10% 20%;     /* Dark Charcoal for text */
-  
-  /* Primary Pink - Elegant and Modern */
-  --primary: 330 80% 90%;        /* Soft Pastel Pink background */
-  --primary-foreground: 330 60% 30%; /* Deep Rose for text on primary */
-  
-  /* Accent - A deeper, vibrant rose for buttons/actions */
-  --accent: 330 65% 55%;         /* Vibrant Rose */
-  --accent-foreground: 0 0% 100%; /* White */
+  /* Soft, premium pink & white theme */
+  --background: 0 0% 100%;
+  --foreground: 330 10% 20%;
 
-  --secondary: 330 20% 97%;      /* Very faint pink/grey for cards */
+  --card: 0 0% 100%;
+  --card-foreground: 330 10% 20%;
+  --card-border: 330 10% 90%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 330 10% 20%;
+  --popover-border: 330 10% 90%;
+
+  /* Primary: soft pastel pink surfaces with deep rose text */
+  --primary: 330 80% 90%;
+  --primary-foreground: 330 60% 30%;
+
+  /* Accent: vibrant rose for actions */
+  --accent: 330 65% 50%;
+  --accent-foreground: 0 0% 100%;
+
+  --secondary: 330 20% 97%;
   --secondary-foreground: 330 10% 20%;
 
   --muted: 330 10% 94%;
-  --muted-foreground: 330 5% 45%;
+  --muted-foreground: 330 5% 42%;
 
-  --destructive: 0 84% 60%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 98%;
+
+  --success: 152 60% 36%;
 
   --border: 330 10% 90%;
   --input: 330 10% 90%;
-  --ring: 330 65% 55%;
+  --ring: 330 65% 50%;
 
   --radius: 1rem;
-  
+
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Playfair Display', serif;
+}
+
+
+/* Dark theme: warm near-black with the same rose accent, lifted for contrast. */
+.dark {
+  --background: 330 12% 7%;
+  --foreground: 330 15% 94%;
+
+  --card: 330 10% 11%;
+  --card-foreground: 330 15% 94%;
+  --card-border: 330 8% 20%;
+  --popover: 330 10% 12%;
+  --popover-foreground: 330 15% 94%;
+  --popover-border: 330 8% 22%;
+
+  --primary: 330 35% 22%;
+  --primary-foreground: 330 70% 88%;
+
+  --accent: 330 75% 64%;
+  --accent-foreground: 330 30% 8%;
+
+  --secondary: 330 8% 15%;
+  --secondary-foreground: 330 15% 92%;
+
+  --muted: 330 8% 17%;
+  --muted-foreground: 330 8% 66%;
+
+  --destructive: 0 70% 62%;
+  --destructive-foreground: 0 0% 8%;
+
+  --success: 152 50% 55%;
+
+  --border: 330 8% 20%;
+  --input: 330 8% 24%;
+  --ring: 330 75% 64%;
+
+  color-scheme: dark;
 }
 
 @layer base {
@@ -99,6 +145,11 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     scroll-snap-type: x proximity;
+    /* Snap to the padded edge, not the screen edge. */
+    scroll-padding-inline: 1.25rem;
+  }
+  @media (min-width: 1024px) {
+    .horizontal-scroll { scroll-padding-inline: 0; }
   }
 
   .horizontal-scroll > * {

@@ -99,7 +99,7 @@ export default function AdminPage() {
         {/* Jobs */}
         <section>
           <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Jobs</h2>
-          <div className="bg-white rounded-2xl border border-border/60 divide-y divide-border/60">
+          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/60">
             {JOBS.map(({ job, title, detail, env }) => {
               const ready = configured ? configured[job] : true;
               return (
@@ -136,7 +136,7 @@ export default function AdminPage() {
             </Button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-border/60 divide-y divide-border/60">
+          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/60">
             {sourcesLoading ? (
               <Loader />
             ) : sources && sources.length > 0 ? (
@@ -172,7 +172,7 @@ export default function AdminPage() {
             )}
           </div>
 
-          <form onSubmit={submitSource} className="mt-3 bg-white rounded-2xl border border-border/60 p-4 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
+          <form onSubmit={submitSource} className="mt-3 bg-card rounded-2xl border border-border/60 p-4 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
             <Input placeholder="Brand name" aria-label="Brand name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             <Input placeholder="store domain, e.g. brand.com" aria-label="Store domain" value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} required />
             <select
@@ -196,7 +196,7 @@ export default function AdminPage() {
         {/* Recent runs */}
         <section>
           <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Recent runs</h2>
-          <div className="bg-white rounded-2xl border border-border/60 divide-y divide-border/60">
+          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/60">
             {runsData?.runs?.length ? (
               runsData.runs.map((r) => (
                 <div key={r.id} className="p-3 flex items-start gap-3 text-sm">

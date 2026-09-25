@@ -2,13 +2,15 @@ import { useUser, useUpdateUser } from "@/hooks/use-user";
 import { BottomNav } from "@/components/BottomNav";
 import { Loader } from "@/components/Loader";
 import { useLocation } from "wouter";
-import { Database, Globe, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
+import { Database, Globe, Monitor, Moon, Sun, Heart, LogOut, ChevronRight, BarChart3, GitCompareArrows, Newspaper, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "next-themes";
 import { clsx } from "clsx";
 
 export default function Settings() {
   const { data: user, isLoading } = useUser();
   const { logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [, setLocation] = useLocation();
 
   if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
@@ -17,7 +19,7 @@ export default function Settings() {
   const MenuItem = ({ icon: Icon, label, value, onClick, destructive = false }: any) => (
     <button 
       onClick={onClick}
-      className="w-full bg-white p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors first:rounded-t-2xl last:rounded-b-2xl border-b border-secondary last:border-0"
+      className="w-full bg-card p-4 flex items-center justify-between hover:bg-secondary/20 transition-colors first:rounded-t-2xl last:rounded-b-2xl border-b border-secondary last:border-0"
     >
       <div className="flex items-center gap-4">
         <div className={clsx(
@@ -42,7 +44,7 @@ export default function Settings() {
     <div className="min-h-screen bg-secondary/30 pb-24">
       <header className="bg-background pt-12 pb-6 px-6 border-b border-border/50 sticky top-0 z-10">
         <div className="max-w-md mx-auto">
-          <h1 className="font-display text-3xl font-bold mb-6">Profile</h1>
+          <h1 className="font-display text-3xl font-bold mb-6">You</h1>
           
           <div className="flex items-center gap-4">
             <div className="h-20 w-20 rounded-full bg-accent text-white flex items-center justify-center text-3xl font-bold shadow-lg shadow-accent/20 overflow-hidden">
@@ -77,6 +79,34 @@ export default function Settings() {
               value={`${user.preferences?.interests?.length || 0} selected`}
               onClick={() => setLocation("/onboarding")}
             />
+          </div>
+        </div>
+
+        {/* Appearance */}
+        <div>
+          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 ml-2">Appearance</h3>
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-secondary border border-border/50" role="radiogroup" aria-label="Theme">
+            {([
+              ["system", "Auto", Monitor],
+              ["light", "Light", Sun],
+              ["dark", "Dark", Moon],
+            ] as const).map(([value, label, Icon]) => {
+              const active = (theme ?? "system") === value;
+              return (
+                <button
+                  key={value}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setTheme(value)}
+                  className={clsx(
+                    "flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors",
+                    active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon size={16} /> {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

@@ -10,9 +10,8 @@ async function initNative() {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     const { App: CapApp } = await import("@capacitor/app");
 
-    // Style status bar
+    // Status bar colours follow the theme (see ThemeChrome); start light until it resolves.
     StatusBar.setStyle({ style: Style.Light }).catch(() => {});
-    StatusBar.setBackgroundColor({ color: '#FDF2F8' }).catch(() => {});
 
     // Handle Android back button
     CapApp.addListener('backButton', ({ canGoBack }) => {

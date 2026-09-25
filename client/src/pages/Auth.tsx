@@ -120,7 +120,7 @@ export default function AuthPage() {
                   aria-label="First name"
                   value={form.firstName}
                   onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  className="w-full rounded-xl border border-border bg-white px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="w-full rounded-xl border border-border bg-card px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   required
                 />
               )}
@@ -132,7 +132,7 @@ export default function AuthPage() {
                 aria-label="Email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full rounded-xl border border-border bg-white px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-xl border border-border bg-card px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 required
               />
               <input
@@ -142,7 +142,7 @@ export default function AuthPage() {
                 aria-label="Password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full rounded-xl border border-border bg-white px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-xl border border-border bg-card px-4 py-3.5 text-base outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 required
               />
               {error && (
@@ -181,7 +181,7 @@ export default function AuthPage() {
           </button>
           <button
             onClick={() => setShowEmail(true)}
-            className="w-full py-4 rounded-xl font-medium text-foreground border border-border bg-white/70 backdrop-blur-sm hover:bg-white transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl font-medium text-foreground border border-border bg-background/85 backdrop-blur-sm hover:bg-card transition-colors flex items-center justify-center gap-2"
           >
             <Mail size={18} />
             <span>Continue with email</span>

@@ -68,6 +68,16 @@ describe.skipIf(!hasDb)("API", () => {
     });
   });
 
+  describe("feed", () => {
+    it("returns the Today feed for a country", async () => {
+      const res = await request(app).get("/api/feed?country=IN").expect(200);
+      expect(Object.keys(res.body).sort()).toEqual(["forYou", "hero", "justLaunched", "priceDrops", "stories", "total"]);
+      expect(res.body.total).toBeGreaterThan(0);
+      const all = [res.body.hero, ...res.body.justLaunched, ...res.body.forYou].filter(Boolean);
+      expect(all.every((p: any) => p.country === "IN")).toBe(true);
+    });
+  });
+
   describe("admin-only operations", () => {
     it("blocks signed-out and regular users", async () => {
       await request(app).get("/api/analytics/overview").expect(401);

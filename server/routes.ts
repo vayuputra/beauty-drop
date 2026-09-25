@@ -1,6 +1,6 @@
 import type { Express, Request } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage, withPriceRanges } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, isAuthenticated, isAdmin, getUserId, isAdminUser } from "./auth";
@@ -19,6 +19,8 @@ import { generateWeeklyDigest, saveWeeklyDigest, getLatestDigest } from "./servi
 import { fetchProductPrices, triggerBackgroundRefresh, checkPythonFetcherHealth } from "./services/priceFetcher";
 import { fetchArticlesForProduct } from "./services/articles";
 import { cache, CACHE_TTL } from "./services/cache";
+import { buildFeed, interestCategories, loadFeedSignals } from "./services/feed";
+import type { ProductWithPriceRange } from "@shared/schema";
 import { checkPricesForAllTrackers } from "./services/priceChecker";
 import { isValidCronRequest } from "./lib/cron";
 import { runJob, recentRuns, listBrandSources, JOB_NAMES, type JobName } from "./ingest/jobs";
@@ -108,6 +110,30 @@ export async function registerRoutes(
     const trendingProducts = await storage.getTrendingProductsByCountry(country);
     cache.set(cacheKey, trendingProducts, CACHE_TTL.DROPS);
     res.json(trendingProducts);
+  });
+
+  // The Today feed: hero, creator stories, new launches, price drops and the rest,
+  // favourite categories first. The shared part is cached per country.
+  app.get("/api/feed", async (req, res) => {
+    const userId = getUserId(req);
+    const dbUser = userId ? await storage.getUser(userId) : undefined;
+    const requested = typeof req.query.country === "string" ? req.query.country : dbUser?.country;
+    const country = requested === "IN" ? "IN" : "US";
+
+    const cacheKey = `drops:feed:${country}`; // cleared with the other drops caches
+    let base = cache.get<{ products: ProductWithPriceRange[]; signals: Awaited<ReturnType<typeof loadFeedSignals>> }>(cacheKey);
+    if (!base) {
+      const products = await storage.getTrendingProductsByCountry(country);
+      base = { products, signals: await loadFeedSignals(products.map((p) => p.id)) };
+      cache.set(cacheKey, base, CACHE_TTL.DROPS);
+    }
+
+    res.json(buildFeed({
+      products: base.products,
+      videosByProduct: base.signals.videosByProduct,
+      drops: base.signals.drops,
+      interests: interestCategories(dbUser?.preferences?.interests),
+    }));
   });
 
   // Search products
@@ -624,8 +650,13 @@ export async function registerRoutes(
     const userId = getUserId(req);
     if (!userId) return res.sendStatus(401);
     
+    // Each tracker comes with its product and current best price, for the Bag screen.
     const trackers = await storage.getUserPriceTrackers(userId);
-    res.json(trackers);
+    const productList = trackers.length
+      ? await db.select().from(products).where(inArray(products.id, trackers.map((t) => t.productId)))
+      : [];
+    const withPrices = new Map((await withPriceRanges(productList)).map((p) => [p.id, p]));
+    res.json(trackers.map((t) => ({ ...t, product: withPrices.get(t.productId) ?? null })));
   });
 
   app.post("/api/products/:id/price-tracker", async (req, res) => {

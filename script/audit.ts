@@ -136,7 +136,7 @@ const productCard = read("client/src/components/ProductCard.tsx");
 const productDetails = read("client/src/pages/ProductDetails.tsx");
 const home = read("client/src/pages/Home.tsx");
 const compare = read("client/src/pages/Compare.tsx");
-const wishlist = read("client/src/pages/Wishlist.tsx");
+const wishlist = read("client/src/pages/Bag.tsx");
 const search = read("client/src/pages/Search.tsx");
 const bottomNav = read("client/src/components/BottomNav.tsx");
 const productImageLib = read("client/src/lib/productImage.ts");
@@ -164,7 +164,7 @@ uxAdd("Search experience exists", /export default function Search/.test(search))
 uxAdd("Side-by-side product comparison exists", /Compare/.test(compare) && /comparisonData/.test(compare));
 uxAdd("Bottom navigation for thumb-friendly mobile nav", /export function BottomNav/.test(bottomNav));
 uxAdd("\"Why it's trending\" social-proof shown on details", /Why it's trending/.test(productDetails));
-uxAdd("Creator/influencer videos surfaced on details", /Product Videos/.test(productDetails));
+uxAdd("Creator/influencer videos surfaced on details", /Creator videos/.test(productDetails));
 
 // Loading & empty states (no blank/janky screens)
 uxAdd("Loading state on home feed", /productsLoading \? \(\s*<Loader/.test(home));

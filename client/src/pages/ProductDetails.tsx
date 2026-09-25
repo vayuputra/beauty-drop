@@ -1,29 +1,110 @@
-import { useProduct, useRefreshInfluencers, useRefreshImage, useTrustScore, useCalculateTrustScore, useReviewSummary, useGenerateReviewSummary, useCreatePriceTracker, usePriceTrackers, useRefreshPrices, useFavoriteIds, useToggleFavorite, useDiscussions, useArticles } from "@/hooks/use-drops";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
-import { useState } from "react";
-import { Loader } from "@/components/Loader";
-import { ArrowLeft, ExternalLink, Play, TrendingUp, Users, RefreshCw, Sparkles, Bell, BellOff, Heart, Share2, Newspaper } from "lucide-react";
-import { SiYoutube, SiTiktok, SiInstagram, SiReddit } from "react-icons/si";
+import { format, formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
-import { ReviewSummary } from "@/components/ReviewSummary";
-import { ProductImage } from "@/components/ProductImage";
+import { ArrowLeft, ExternalLink, Heart, Newspaper, Play, RefreshCw, Share2, TrendingUp, Wrench } from "lucide-react";
+import { SiReddit, SiYoutube } from "react-icons/si";
+import {
+  useArticles,
+  useCalculateTrustScore,
+  useCreatePriceTracker,
+  useDeletePriceTracker,
+  useDiscussions,
+  useFavoriteIds,
+  useGenerateReviewSummary,
+  usePriceHistory,
+  usePriceTrackers,
+  useProduct,
+  useRefreshImage,
+  useRefreshInfluencers,
+  useRefreshPrices,
+  useReviewSummary,
+  useToggleFavorite,
+  useTrustScore,
+} from "@/hooks/use-drops";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
+import { Loader } from "@/components/Loader";
+import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+import { ProductImage } from "@/components/ProductImage";
+import { TrustBadge, TrustScoreDetails } from "@/components/TrustBadge";
+import { ReviewSummary } from "@/components/ReviewSummary";
+import { OffersPanel, PriceBar, type OfferView } from "@/components/Offers";
+import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { apiUrl } from "@/lib/api";
-import { format, formatDistanceToNow } from "date-fns";
-import { formatPrice, offerSourceLabel, sortOffers } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
+import { haptic } from "@/lib/haptics";
 
-/** Retailer logo with a letter avatar when there is no logo or it fails to load. */
-function RetailerLogo({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
-  const [failed, setFailed] = useState(false);
+function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="w-10 h-10 flex-shrink-0 rounded-full bg-secondary flex items-center justify-center font-bold text-lg text-secondary-foreground overflow-hidden">
-      {logoUrl && !failed ? (
-        <img src={logoUrl} alt="" className="w-full h-full object-cover" onError={() => setFailed(true)} />
-      ) : (
-        <span aria-hidden="true">{name.charAt(0)}</span>
+    <motion.section
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.35 }}
+      className="space-y-3"
+    >
+      <h2 className="font-display text-2xl font-bold flex items-center gap-2">
+        {icon}
+        {title}
+      </h2>
+      {children}
+    </motion.section>
+  );
+}
+
+/** Swipeable product photos: the main image plus any shade images. */
+function MediaCarousel({
+  product,
+  images,
+  index,
+  onIndexChange,
+}: {
+  product: any;
+  images: string[];
+  index: number;
+  onIndexChange: (i: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Scroll to a slide when something else (a shade tap) picks it.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const target = index * el.clientWidth;
+    if (Math.abs(el.scrollLeft - target) > 4) el.scrollTo({ left: target, behavior: "smooth" });
+  }, [index]);
+
+  return (
+    <div className="relative">
+      <div
+        ref={ref}
+        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar lg:rounded-[1.75rem]"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const i = Math.round(el.scrollLeft / el.clientWidth);
+          if (i !== index) onIndexChange(i);
+        }}
+        aria-roledescription="carousel"
+        aria-label="Product photos"
+      >
+        {images.map((src, i) => (
+          <div key={src || i} className="w-full flex-shrink-0 snap-center" aria-roledescription="slide" aria-label={`${i + 1} of ${images.length}`}>
+            <ProductImage fallbackLabels={false}
+              product={{ ...product, imageUrl: src || product.imageUrl }}
+              priority={i === 0}
+              className="aspect-[4/5] w-full bg-secondary"
+            />
+          </div>
+        ))}
+      </div>
+      {images.length > 1 && (
+        <div className="absolute bottom-4 inset-x-0 flex justify-center gap-1.5" aria-hidden="true">
+          {images.map((_, i) => (
+            <span key={i} className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-foreground" : "w-1.5 bg-foreground/35"}`} />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -32,55 +113,89 @@ function RetailerLogo({ name, logoUrl }: { name: string; logoUrl?: string | null
 export default function ProductDetails() {
   const [, params] = useRoute("/product/:id");
   const id = params ? parseInt(params.id) : 0;
-  
-  const { data: product, isLoading, refetch } = useProduct(id);
-  const refreshInfluencers = useRefreshInfluencers();
-  const refreshImage = useRefreshImage();
-
-  const { data: trustScoreData, isLoading: trustLoading } = useTrustScore(id);
-  const calculateTrustScore = useCalculateTrustScore();
-  const { data: reviewSummaryData, isLoading: reviewLoading } = useReviewSummary(id);
-  const generateReviewSummary = useGenerateReviewSummary();
-  const { data: user } = useUser();
-  const { data: priceTrackers } = usePriceTrackers();
-  const createPriceTracker = useCreatePriceTracker();
-  const refreshPrices = useRefreshPrices();
-  const { data: discussionsData } = useDiscussions(id);
-  const { data: articlesData } = useArticles(id);
-  const { data: favoriteIds } = useFavoriteIds();
-  const toggleFavorite = useToggleFavorite();
-  const isFavorited = favoriteIds?.includes(id) ?? false;
   const { toast } = useToast();
 
-  if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
-  if (!product) return <div className="p-8 text-center">Product not found</div>;
+  const { data: product, isLoading } = useProduct(id);
+  const { data: user } = useUser();
+  const { data: trustScoreData } = useTrustScore(id);
+  const { data: reviewSummaryData } = useReviewSummary(id);
+  const { data: discussionsData } = useDiscussions(id);
+  const { data: articlesData } = useArticles(id);
+  const { data: priceHistoryData } = usePriceHistory(id);
+  const { data: priceTrackers } = usePriceTrackers();
+  const { data: favoriteIds } = useFavoriteIds();
+  const toggleFavorite = useToggleFavorite();
+  const createPriceTracker = useCreatePriceTracker();
+  const deletePriceTracker = useDeletePriceTracker();
 
-  // The server records the click and redirects to the retailer (with its app deep link where supported).
-  const handleOfferClick = (offer: any) => {
+  // Operator tools
+  const refreshInfluencers = useRefreshInfluencers();
+  const refreshImage = useRefreshImage();
+  const refreshPrices = useRefreshPrices();
+  const calculateTrustScore = useCalculateTrustScore();
+  const generateReviewSummary = useGenerateReviewSummary();
+
+  const [slide, setSlide] = useState(0);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<any | null>(null);
+  // Give the floating controls a backdrop once the photos scroll away.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > window.innerWidth * 0.9);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const variants: any[] = product?.variants ?? [];
+  const images = useMemo(() => {
+    if (!product) return [];
+    const list = [product.imageUrl, ...variants.map((v) => v.imageUrl)].filter((u): u is string => !!u);
+    const unique = Array.from(new Set(list));
+    return unique.length > 0 ? unique : [""];
+  }, [product, variants]);
+
+  if (isLoading) return <div className="min-h-screen bg-background"><Loader /></div>;
+  if (!product) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-muted-foreground">We couldn&apos;t find that product.</p>
+        <Link href="/" className="text-accent font-semibold">Back to Today</Link>
+      </div>
+    );
+  }
+
+  const isFavorited = favoriteIds?.includes(id) ?? false;
+  const tracker = priceTrackers?.find((t: any) => t.productId === id);
+  const offers: OfferView[] = product.offers ?? [];
+  const videos: any[] = product.videos ?? [];
+  const selectedVariant = variants.find((v) => v.id === selectedVariantId) ?? null;
+  const currency = offers[0]?.currency ?? (product.country === "IN" ? "INR" : "USD");
+  const brandOffer = offers.find((o) => o.source === "brand_site");
+
+  const handleBuy = (offer: OfferView) => {
+    haptic("medium");
+    // The server records the click and redirects to the retailer (with its app deep link where supported).
     window.open(apiUrl(`/api/go/${offer.id}`), "_blank", "noopener");
   };
 
-  const handleRefreshPrices = async () => {
-    try {
-      const result = await refreshPrices.mutateAsync(id);
-      toast({ title: result.message ?? (result.success ? "Prices updated" : "Prices unchanged") });
-    } catch {
-      toast({ title: "Couldn't refresh prices", description: "Please try again later.", variant: "destructive" });
+  const handleToggleAlert = async () => {
+    if (!user) {
+      toast({ title: "Sign in to get price alerts" });
+      return;
     }
-  };
-
-  const sortedOffers = sortOffers<any>(product.offers ?? []);
-  const buyableCount = sortedOffers.filter((o: any) => o.inStock !== false).length;
-  const variants: any[] = product.variants ?? [];
-
-  const handleRefreshInfluencers = async () => {
-    await refreshInfluencers.mutateAsync(product.id);
-    refetch();
-  };
-
-  const handleRefreshImage = async () => {
-    await refreshImage.mutateAsync(product.id);
-    refetch();
+    haptic(tracker ? "light" : "success");
+    try {
+      if (tracker) {
+        await deletePriceTracker.mutateAsync(tracker.id);
+        toast({ title: "Price alerts off" });
+      } else {
+        await createPriceTracker.mutateAsync({ productId: id, notifyOnAnyDrop: true });
+        toast({ title: "We'll tell you when it drops", description: "Alerts for any seller's price drop." });
+      }
+    } catch {
+      toast({ title: "Couldn't update price alerts", variant: "destructive" });
+    }
   };
 
   const handleShare = async () => {
@@ -101,203 +216,172 @@ export default function ProductDetails() {
     }
   };
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'youtube': return SiYoutube;
-      case 'tiktok': return SiTiktok;
-      case 'instagram': return SiInstagram;
-      case 'reddit': return SiReddit;
-      default: return SiYoutube;
+  const runTool = async (label: string, fn: () => Promise<any>) => {
+    try {
+      const r = await fn();
+      toast({ title: label, description: r?.message ?? "Done" });
+    } catch {
+      toast({ title: `${label} failed`, variant: "destructive" });
     }
   };
 
-  const getPlatformColor = (platform: string) => {
-    switch (platform) {
-      case 'youtube': return 'text-red-500';
-      case 'tiktok': return 'text-foreground';
-      case 'instagram': return 'text-pink-500';
-      case 'reddit': return 'text-orange-500';
-      default: return 'text-foreground';
+  const pickVariant = (v: any) => {
+    haptic();
+    setSelectedVariantId(v.id === selectedVariantId ? null : v.id);
+    if (v.imageUrl) {
+      const i = images.indexOf(v.imageUrl);
+      if (i >= 0) setSlide(i);
     }
   };
 
-  const videos: any[] = product.videos ?? [];
+  const hasVerdict = trustScoreData?.exists || reviewSummaryData?.exists;
 
   return (
-    <div className="min-h-screen bg-background pb-32 momentum-scroll">
-      {/* Hero Image */}
-      <div className="relative aspect-[4/5] w-full bg-secondary overflow-hidden">
-        <Link href="/" data-testid="button-back" className="absolute top-12 left-6 z-20 h-10 w-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg text-foreground hover:scale-110 transition-transform">
-          <ArrowLeft size={20} />
-        </Link>
-        
-        <div className="absolute top-12 right-6 z-20 flex gap-2">
+    <div className="min-h-screen bg-background pb-36 lg:pb-16">
+      {/* Floating controls over the photos (mobile) / a slim top bar (desktop) */}
+      <div
+        className={`fixed top-0 inset-x-0 z-40 pointer-events-none transition-colors duration-200 lg:sticky lg:bg-background/85 lg:backdrop-blur-xl lg:border-b lg:border-border/40 ${
+          scrolled ? "bg-background/85 backdrop-blur-xl border-b border-border/40" : ""
+        }`}
+        style={{ paddingTop: "var(--safe-area-top)" }}
+      >
+        <div className="max-w-6xl mx-auto px-5 py-3 flex justify-between pointer-events-auto">
           <button
-            onClick={() => toggleFavorite.mutate({ productId: product.id, isFavorited })}
-            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
-            aria-label={isFavorited ? "Remove from wishlist" : "Add to wishlist"}
+            onClick={() => (window.history.length > 1 ? window.history.back() : (window.location.href = "/"))}
+            data-testid="button-back"
+            aria-label="Back"
+            className="h-10 w-10 bg-background/85 backdrop-blur-md rounded-full flex items-center justify-center shadow-md text-foreground active:scale-95 transition-transform"
           >
-            <Heart size={18} className={isFavorited ? "text-red-500 fill-red-500" : "text-foreground"} />
+            <ArrowLeft size={20} />
           </button>
-          <button
-            onClick={handleShare}
-            className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
-            aria-label="Share this product"
-          >
-            <Share2 size={18} className="text-foreground" />
-          </button>
-          {user?.isAdmin && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRefreshImage}
-              disabled={refreshImage.isPending}
-              data-testid="button-refresh-image"
-              aria-label="Refresh product image"
-              className="h-10 w-10 bg-white/80 backdrop-blur-md rounded-full shadow-lg text-foreground hover:bg-white/90 transition-all"
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                haptic(isFavorited ? "light" : "success");
+                toggleFavorite.mutate({ productId: product.id, isFavorited });
+              }}
+              className="h-10 w-10 bg-background/85 backdrop-blur-md rounded-full shadow-md flex items-center justify-center active:scale-95 transition-transform"
+              aria-label={isFavorited ? "Remove from wishlist" : "Add to wishlist"}
+              aria-pressed={isFavorited}
             >
-              <RefreshCw size={18} className={refreshImage.isPending ? "animate-spin" : ""} />
-            </Button>
-          )}
+              <Heart size={18} className={isFavorited ? "text-accent fill-accent" : "text-foreground"} />
+            </button>
+            <button
+              onClick={handleShare}
+              className="h-10 w-10 bg-background/85 backdrop-blur-md rounded-full shadow-md flex items-center justify-center active:scale-95 transition-transform"
+              aria-label="Share this product"
+            >
+              <Share2 size={18} className="text-foreground" />
+            </button>
+          </div>
         </div>
-        
-        <ProductImage product={product} priority className="w-full h-full" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-90 pointer-events-none" />
       </div>
 
-      <div className="max-w-md mx-auto px-6 -mt-24 relative z-10">
-        {/* Title Block */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-accent/10 text-accent px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              {product.brand}
-            </span>
-            <span className="bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              {product.category}
-            </span>
-          </div>
-          
-          <h1 data-testid="text-product-name" className="font-display text-3xl font-bold text-foreground leading-tight mb-2">
-            {product.name}
-          </h1>
-          {product.launchedAt && (
-            <p className="text-xs font-medium uppercase tracking-wider text-accent mb-4">
-              Launched {format(new Date(product.launchedAt), "d MMM yyyy")}
-            </p>
-          )}
-          {!product.launchedAt && <div className="mb-2" />}
-          
-          <p className="text-muted-foreground leading-relaxed">
-            {product.description}
-          </p>
+      <div className="max-w-6xl mx-auto lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12 lg:px-8 lg:pt-6">
+        {/* Photos */}
+        <div className="lg:sticky lg:top-24 lg:self-start">
+          <MediaCarousel product={product} images={images} index={slide} onIndexChange={setSlide} />
+        </div>
 
-          {variants.length > 1 && (
-            <div className="mt-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                {variants.length} shades &amp; sizes
+        {/* Details */}
+        <div className="px-5 lg:px-0 pt-6 lg:pt-0 space-y-10">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold uppercase tracking-widest text-accent">{product.brand}</span>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{product.category}</span>
+              {trustScoreData?.exists && (
+                <TrustBadge score={trustScoreData.trustScore} label={trustScoreData.label} color={trustScoreData.color} compact className="ml-auto" />
+              )}
+            </div>
+            <h1 data-testid="text-product-name" className="mt-2 font-display text-[2rem] leading-[1.1] font-bold text-foreground">
+              {product.name}
+            </h1>
+            {product.launchedAt && (
+              <p className="mt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Launched {format(new Date(product.launchedAt), "d MMM yyyy")}
               </p>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
-                {variants.map((v) => (
-                  <span
-                    key={v.id}
-                    className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium ${
-                      v.available === false
-                        ? "border-border text-muted-foreground/60 line-through"
-                        : "border-foreground/20 text-foreground bg-white"
-                    }`}
-                    title={v.available === false ? "Sold out" : undefined}
-                  >
-                    {v.title}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Why Trending */}
-        {product.whyTrending && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-primary/20 p-5 rounded-2xl border border-primary/30 mb-8"
-          >
-            <div className="flex items-center gap-2 mb-2 text-accent-foreground font-semibold">
-              <TrendingUp size={18} />
-              <h3 className="uppercase tracking-wide text-xs">Why it's trending</h3>
-            </div>
-            <p className="text-foreground/80 text-sm font-medium">
-              {product.whyTrending}
-            </p>
-          </motion.div>
-        )}
-
-        {/* Influencer Section with Video Embeds - MOVED UP */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12 }}
-          className="mb-10"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Users size={18} className="text-accent" />
-              <h3 className="font-display text-xl font-bold">Product Videos</h3>
-            </div>
-            {user?.isAdmin && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRefreshInfluencers}
-                disabled={refreshInfluencers.isPending}
-                data-testid="button-refresh-influencers"
-                className="gap-2"
-              >
-                {refreshInfluencers.isPending ? (
-                  <RefreshCw size={14} className="animate-spin" />
-                ) : (
-                  <Sparkles size={14} />
-                )}
-                Refresh
-              </Button>
             )}
-          </div>
+            <p className="mt-4 text-muted-foreground leading-relaxed">{product.description}</p>
 
-          {videos.length > 0 ? (
-            <div className="flex gap-3 overflow-x-auto no-scrollbar horizontal-scroll -mx-6 px-6 pb-2">
-              {videos.slice(0, 6).map((video, index) => {
-                const PlatformIcon = getPlatformIcon(video.platform);
-                return (
-                  <a
+            {product.whyTrending && (
+              <div className="mt-5 flex gap-3 rounded-2xl bg-primary/40 p-4">
+                <TrendingUp size={18} className="text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-primary-foreground">Why it's trending</p>
+                  <p className="text-sm text-foreground/85 mt-0.5">{product.whyTrending}</p>
+                </div>
+              </div>
+            )}
+
+            {variants.length > 1 && (
+              <div className="mt-6">
+                <p className="text-sm font-semibold text-foreground mb-2.5">
+                  {variants.length} shades &amp; sizes
+                  {selectedVariant && <span className="font-normal text-muted-foreground"> · {selectedVariant.title}</span>}
+                </p>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-5 px-5 lg:mx-0 lg:px-0 lg:flex-wrap pb-1" role="group" aria-label="Shades and sizes">
+                  {variants.map((v) => {
+                    const selected = v.id === selectedVariantId;
+                    const soldOut = v.available === false;
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => pickVariant(v)}
+                        aria-pressed={selected}
+                        className={`whitespace-nowrap rounded-full border px-3.5 py-2 text-sm transition-all ${
+                          selected
+                            ? "border-foreground bg-foreground text-background"
+                            : soldOut
+                              ? "border-border text-muted-foreground/70 line-through"
+                              : "border-border bg-card text-foreground hover:border-foreground/40"
+                        }`}
+                      >
+                        {v.title}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedVariant && brandOffer && (
+                  <p className="mt-2.5 text-sm text-muted-foreground">
+                    {selectedVariant.available === false
+                      ? `${selectedVariant.title} is sold out at ${brandOffer.retailer.name}.`
+                      : selectedVariant.price != null
+                        ? `${selectedVariant.title}: ${formatPrice(selectedVariant.price, currency)} at ${brandOffer.retailer.name}.`
+                        : null}
+                  </p>
+                )}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Desktop price comparison sits right under the title */}
+          <OffersPanel
+            offers={offers}
+            onBuy={handleBuy}
+            tracking={!!tracker}
+            onToggleAlert={handleToggleAlert}
+            alertBusy={createPriceTracker.isPending || deletePriceTracker.isPending}
+          />
+
+          {videos.length > 0 && (
+            <Section title="Creator videos" icon={<SiYoutube size={20} className="text-red-500" />}>
+              <div className="-mx-5 px-5 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto no-scrollbar horizontal-scroll pb-1">
+                {videos.slice(0, 6).map((video, index) => (
+                  <button
                     key={video.id}
-                    href={video.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 w-60 group"
+                    onClick={() => (video.embedUrl ? setPlaying(video) : window.open(video.videoUrl, "_blank", "noopener"))}
+                    className="flex-shrink-0 w-60 text-left group"
                     data-testid={`video-card-${index}`}
                   >
                     <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary">
-                      {video.thumbnailUrl ? (
-                        <img
-                          src={video.thumbnailUrl}
-                          alt=""
-                          loading="lazy"
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <PlatformIcon size={28} className={getPlatformColor(video.platform)} />
-                        </div>
+                      {video.thumbnailUrl && (
+                        <img src={video.thumbnailUrl} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                       )}
                       <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                        <div className="w-10 h-10 rounded-full bg-white/85 backdrop-blur-sm flex items-center justify-center shadow">
-                          <Play size={16} fill="currentColor" className="text-foreground ml-0.5" />
-                        </div>
+                        <span className="w-11 h-11 rounded-full bg-background/90 flex items-center justify-center shadow">
+                          <Play size={17} fill="currentColor" className="text-foreground ml-0.5" />
+                        </span>
                       </div>
                     </div>
                     <p className="mt-2 text-sm font-medium text-foreground line-clamp-2 leading-snug">{video.title}</p>
@@ -305,315 +389,142 @@ export default function ProductDetails() {
                       {video.creatorName}
                       {video.publishedAt && ` · ${formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })}`}
                     </p>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {hasVerdict && (
+            <Section title="The verdict">
+              {reviewSummaryData?.exists && (
+                <ReviewSummary
+                  data={{
+                    summaryText: reviewSummaryData.summaryText,
+                    climateSuitability: reviewSummaryData.climateSuitability,
+                    skinTypeMatch: reviewSummaryData.skinTypeMatch,
+                    prosHighlights: reviewSummaryData.prosHighlights,
+                    consHighlights: reviewSummaryData.consHighlights,
+                    sources: reviewSummaryData.sources,
+                  }}
+                />
+              )}
+              {trustScoreData?.exists && (
+                <TrustScoreDetails
+                  data={{
+                    trustScore: trustScoreData.trustScore,
+                    label: trustScoreData.label,
+                    color: trustScoreData.color,
+                    redditSentimentScore: trustScoreData.redditSentimentScore,
+                    engagementAuthenticityScore: trustScoreData.engagementAuthenticityScore,
+                    redditMentions: trustScoreData.redditMentions,
+                  }}
+                />
+              )}
+            </Section>
+          )}
+
+          {Array.isArray(priceHistoryData) && priceHistoryData.length > 1 && (
+            <PriceHistoryChart points={priceHistoryData} currency={currency} />
+          )}
+
+          {articlesData?.exists && articlesData.articles?.length > 0 && (
+            <Section title="Read" icon={<Newspaper size={20} className="text-accent" />}>
+              <div className="space-y-2">
+                {articlesData.articles.slice(0, 6).map((article: any, index: number) => (
+                  <a
+                    key={index}
+                    href={article.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-card rounded-2xl border border-border p-4 flex items-start gap-3 hover:border-accent/40 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground line-clamp-2">{article.title}</p>
+                      {article.snippet && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{article.snippet}</p>}
+                      {article.source && <p className="text-xs text-accent font-medium mt-1">{article.source}</p>}
+                    </div>
+                    <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />
                   </a>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="p-6 bg-secondary/30 rounded-xl text-center">
-              <Users size={32} className="mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">
-                No creator videos yet. They'll show up here as people review it.
-              </p>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Trust Score Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="mb-8"
-        >
-          {trustScoreData?.exists ? (
-            <TrustScoreDetails data={{
-              trustScore: trustScoreData.trustScore,
-              label: trustScoreData.label,
-              color: trustScoreData.color,
-              redditSentimentScore: trustScoreData.redditSentimentScore,
-              engagementAuthenticityScore: trustScoreData.engagementAuthenticityScore,
-              redditMentions: trustScoreData.redditMentions
-            }} />
-          ) : (
-            <div className="bg-card rounded-xl p-4 border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-foreground mb-1">Trust Score</h3>
-                  <p className="text-sm text-muted-foreground">Analyze Reddit sentiment & engagement authenticity</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => calculateTrustScore.mutate(id)}
-                  disabled={calculateTrustScore.isPending}
-                  data-testid="button-calculate-trust"
-                  className="gap-2"
-                >
-                  {calculateTrustScore.isPending ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <Sparkles size={14} />
-                  )}
-                  Calculate
-                </Button>
+                ))}
               </div>
-            </div>
+            </Section>
           )}
-        </motion.div>
 
-        {/* AI Review Summary Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18 }}
-          className="mb-8"
-        >
-          {reviewSummaryData?.exists ? (
-            <ReviewSummary data={{
-              summaryText: reviewSummaryData.summaryText,
-              climateSuitability: reviewSummaryData.climateSuitability,
-              skinTypeMatch: reviewSummaryData.skinTypeMatch,
-              prosHighlights: reviewSummaryData.prosHighlights,
-              consHighlights: reviewSummaryData.consHighlights,
-              sources: reviewSummaryData.sources
-            }} />
-          ) : (
-            <div className="bg-card rounded-xl p-4 border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-foreground mb-1">AI Review Summary</h3>
-                  <p className="text-sm text-muted-foreground">Get climate & skin type recommendations</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => generateReviewSummary.mutate(id)}
-                  disabled={generateReviewSummary.isPending}
-                  data-testid="button-generate-summary"
-                  className="gap-2"
-                >
-                  {generateReviewSummary.isPending ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <Sparkles size={14} />
-                  )}
-                  Generate
-                </Button>
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Community Discussions Section */}
-        {discussionsData?.exists && discussionsData.discussions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mb-8"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <SiReddit size={18} className="text-orange-500" />
-              <h3 className="font-display text-xl font-bold">Community Discussions</h3>
-              {discussionsData.mentionCount > 0 && (
-                <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                  {discussionsData.mentionCount} mentions
-                </span>
-              )}
-            </div>
-            <div className="space-y-2">
-              {discussionsData.discussions.slice(0, 5).map((discussion: any, index: number) => (
-                <div
-                  key={index}
-                  className="bg-white dark:bg-card rounded-xl border border-border p-3 flex items-start gap-3 cursor-pointer hover:border-orange-300 transition-colors"
-                  onClick={() => discussion.url && window.open(discussion.url, '_blank')}
-                >
-                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <SiReddit size={16} className="text-orange-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground line-clamp-2">{discussion.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Reddit</p>
-                  </div>
-                  {discussion.url && <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Articles Section */}
-        {articlesData?.exists && articlesData.articles?.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22 }}
-            className="mb-8"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <Newspaper size={18} className="text-blue-500" />
-              <h3 className="font-display text-xl font-bold">Articles & Reviews</h3>
-            </div>
-            <div className="space-y-2">
-              {articlesData.articles.slice(0, 6).map((article: any, index: number) => (
-                <div
-                  key={index}
-                  className="bg-white dark:bg-card rounded-xl border border-border p-3 flex items-start gap-3 cursor-pointer hover:border-blue-300 transition-colors"
-                  onClick={() => article.url && window.open(article.url, '_blank')}
-                >
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Newspaper size={14} className="text-blue-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground line-clamp-2">{article.title}</p>
-                    {article.snippet && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{article.snippet}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      {article.source && (
-                        <span className="text-xs text-blue-600 font-medium">{article.source}</span>
-                      )}
-                      {article.publishedAt && (
-                        <span className="text-xs text-muted-foreground">{article.publishedAt}</span>
-                      )}
-                    </div>
-                  </div>
-                  {article.url && <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Price Tracker Section */}
-        {user && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.19 }}
-            className="mb-8"
-          >
-            {(() => {
-              const isTracking = priceTrackers?.some((t: any) => t.productId === id);
-              return (
-                <div className="bg-card rounded-xl p-4 border">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {isTracking ? (
-                        <Bell size={18} className="text-primary" />
-                      ) : (
-                        <BellOff size={18} className="text-muted-foreground" />
-                      )}
-                      <div>
-                        <h3 className="font-semibold text-foreground">Price Alerts</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {isTracking ? 'You\'ll be notified on price drops' : 'Get notified when price drops'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={isTracking ? "secondary" : "default"}
-                      onClick={() => !isTracking && createPriceTracker.mutate({ productId: id, notifyOnAnyDrop: true })}
-                      disabled={isTracking || createPriceTracker.isPending}
-                      data-testid="button-track-price"
-                      className="gap-2"
+          {discussionsData?.exists && discussionsData.discussions.length > 0 && (
+            <Section title="Community" icon={<SiReddit size={20} className="text-orange-500" />}>
+              <div className="space-y-2">
+                {discussionsData.discussions.slice(0, 5).map((discussion: any, index: number) =>
+                  discussion.url ? (
+                    <a
+                      key={index}
+                      href={discussion.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-card rounded-2xl border border-border p-4 flex items-start gap-3 hover:border-orange-300 transition-colors"
                     >
-                      {createPriceTracker.isPending ? (
-                        <RefreshCw size={14} className="animate-spin" />
-                      ) : isTracking ? (
-                        'Tracking'
-                      ) : (
-                        'Track Price'
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })()}
-          </motion.div>
-        )}
-
-        {/* Offers / Price Comparison */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-xl font-bold">Shop Now</h3>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleRefreshPrices}
-              disabled={refreshPrices.isPending}
-              data-testid="button-refresh-prices"
-              className="gap-2"
-            >
-              {refreshPrices.isPending ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <RefreshCw size={14} />
-              )}
-              Refresh Prices
-            </Button>
-          </div>
-          <div className="space-y-3">
-            {sortedOffers.length > 0 ? (
-              sortedOffers.map((offer: any, index: number) => (
-                <div 
-                  key={offer.id} 
-                  data-testid={`card-offer-${offer.id}`}
-                  className="bg-white dark:bg-card p-4 rounded-xl border border-border shadow-sm flex items-center justify-between group hover:border-accent/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <RetailerLogo name={offer.retailer.name} logoUrl={offer.retailer.logoUrl} />
-                    <div>
-                      <p className="font-semibold text-foreground">{offer.retailer.name}</p>
-                      {offer.inStock === false ? (
-                        <p className="text-xs font-semibold text-destructive">Sold out</p>
-                      ) : (
-                        index === 0 && buyableCount > 1 && (
-                          <p className="text-xs text-accent font-semibold">Best price</p>
-                        )
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {[
-                          offerSourceLabel(offer.source, offer.retailer.kind),
-                          offer.source === "demo" || !offer.lastUpdated
-                            ? "Price not yet verified"
-                            : `Checked ${formatDistanceToNow(new Date(offer.lastUpdated), { addSuffix: true })}`,
-                        ].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <span className={`block font-bold text-lg ${offer.inStock === false ? "text-muted-foreground" : ""}`}>
-                        {formatPrice(Number(offer.price), offer.currency)}
-                      </span>
-                      {offer.listPrice && offer.listPrice > offer.price && (
-                        <span className="block text-xs text-muted-foreground line-through">
-                          {formatPrice(Number(offer.listPrice), offer.currency)}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleOfferClick(offer)}
-                      data-testid={`button-buy-${offer.id}`}
-                      className="bg-foreground text-background px-4 py-2 rounded-lg font-bold text-sm hover:bg-accent hover:text-white transition-colors flex items-center gap-2"
-                    >
-                      {offer.inStock === false ? "View" : "Buy"} <ExternalLink size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-4 bg-secondary/50 rounded-xl text-center text-muted-foreground text-sm">
-                No offers currently available.
+                      <p className="flex-1 text-sm text-foreground line-clamp-2">{discussion.title}</p>
+                      <ExternalLink size={14} className="text-muted-foreground flex-shrink-0 mt-1" />
+                    </a>
+                  ) : (
+                    <p key={index} className="bg-card rounded-2xl border border-border p-4 text-sm text-foreground">{discussion.title}</p>
+                  ),
+                )}
               </div>
-            )}
-          </div>
+            </Section>
+          )}
+
+          {user?.isAdmin && (
+            <details className="rounded-2xl border border-dashed border-border p-4">
+              <summary className="cursor-pointer text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+                <Wrench size={15} /> Operator tools
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  ["Refresh prices", () => refreshPrices.mutateAsync(id), refreshPrices.isPending],
+                  ["Refresh videos", () => refreshInfluencers.mutateAsync(id), refreshInfluencers.isPending],
+                  ["Refresh image", () => refreshImage.mutateAsync(id), refreshImage.isPending],
+                  ["Trust score", () => calculateTrustScore.mutateAsync(id), calculateTrustScore.isPending],
+                  ["Review summary", () => generateReviewSummary.mutateAsync(id), generateReviewSummary.isPending],
+                ].map(([label, fn, pending]) => (
+                  <Button key={label as string} size="sm" variant="outline" className="gap-2" disabled={pending as boolean} onClick={() => runTool(label as string, fn as () => Promise<any>)}>
+                    <RefreshCw size={13} className={pending ? "animate-spin" : ""} /> {label as string}
+                  </Button>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </div>
+
+      <PriceBar
+        offers={offers}
+        onBuy={handleBuy}
+        tracking={!!tracker}
+        onToggleAlert={handleToggleAlert}
+        alertBusy={createPriceTracker.isPending || deletePriceTracker.isPending}
+      />
+
+      <Drawer open={!!playing} onOpenChange={(o) => !o && setPlaying(null)}>
+        <DrawerContent className="bg-black border-black">
+          <DrawerTitle className="sr-only">{playing?.title ?? "Creator video"}</DrawerTitle>
+          {playing && (
+            <div className="p-4" style={{ paddingBottom: "calc(var(--safe-area-bottom) + 16px)" }}>
+              <div className="relative w-full aspect-video rounded-xl overflow-hidden">
+                <iframe
+                  src={`${playing.embedUrl}?autoplay=1&playsinline=1&rel=0&modestbranding=1`}
+                  title={playing.title ?? "Creator video"}
+                  className="absolute inset-0 w-full h-full"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+              <p className="mt-3 text-white text-sm font-medium">{playing.title}</p>
+              <p className="text-white/60 text-xs">{playing.creatorName}</p>
+            </div>
+          )}
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

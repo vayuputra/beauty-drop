@@ -16,7 +16,10 @@
     "android:run": "npx cap run android",
     "build:vercel": "tsx script/build-vercel.ts",
     "test": "vitest run",
-    "db:seed": "tsx script/seed.ts"
+    "db:seed": "tsx script/seed.ts",
+    "ios:sync": "npx cap sync ios",
+    "ios:build": "npx vite build && npx cap sync ios",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",
@@ -24,6 +27,7 @@
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
     "@capacitor/haptics": "^8.0.1",
+    "@capacitor/ios": "^8.5.2",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
     "@hookform/resolvers": "^3.10.0",
