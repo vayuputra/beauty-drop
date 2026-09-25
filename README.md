@@ -82,6 +82,14 @@ so it fits in one serverless call:
 | `launches` | Brand-owned Shopify stores (`/products.json`): new products, shades, official prices and stock | nothing; add stores on the admin page |
 | `prices` | Google Shopping via SerpAPI: prices at other sellers | `SERPAPI_KEY` |
 | `content` | YouTube Data API: creator review videos | `YOUTUBE_API_KEY` |
+| `photos` | Checks each product photo still loads, weekly | nothing |
+
+**Product photos.** Real photos come from the brand's store catalog (Shopify images, including ones
+hosted on the store's own domain), from curated links, or from a matched Google Shopping listing
+when a product has none (`prices` job). The drawn illustration appears only when no working photo
+exists. **Data & ingestion → Missing photos** lists every product still showing it, with *Find photo*
+(Google Shopping) and *Paste link*. A pasted link is checked through the image proxy before it's
+saved, and a hand-picked photo is never overwritten by later syncs.
 
 Operators (`ADMIN_EMAILS`) manage the watched brand stores, run jobs and see each run's result at
 **Profile → Data & ingestion** (`/admin`).

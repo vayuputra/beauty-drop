@@ -20,7 +20,9 @@ const ALLOWED_CONTENT_TYPES = new Set([
 
 export type UrlCheck = { ok: true; url: URL } | { ok: false; status: number; error: string };
 
-export function checkImageUrl(raw: unknown): UrlCheck {
+export type HostCheck = (hostname: string) => boolean;
+
+export function checkImageUrl(raw: unknown, isAllowed: HostCheck = isAllowedImageHost): UrlCheck {
   if (typeof raw !== "string" || !raw) return { ok: false, status: 400, error: "Missing url parameter" };
   let url: URL;
   try {
@@ -31,7 +33,7 @@ export function checkImageUrl(raw: unknown): UrlCheck {
   if (url.protocol !== "https:") return { ok: false, status: 400, error: "Only https URLs are allowed" };
   if (url.username || url.password) return { ok: false, status: 400, error: "Credentials in URL are not allowed" };
   if (url.port && url.port !== "443") return { ok: false, status: 400, error: "Non-standard ports are not allowed" };
-  if (!isAllowedImageHost(url.hostname)) return { ok: false, status: 403, error: "Domain not allowed" };
+  if (!isAllowed(url.hostname)) return { ok: false, status: 403, error: "Domain not allowed" };
   return { ok: true, url };
 }
 
@@ -44,7 +46,7 @@ export function normalizeContentType(header: string | null): string | null {
  * Fetches `start`, following at most MAX_REDIRECTS redirects and re-checking the
  * allowlist on every hop so a redirect can't reach an arbitrary or internal host.
  */
-async function fetchAllowlisted(start: URL): Promise<globalThis.Response | UrlCheck> {
+async function fetchAllowlisted(start: URL, isAllowed: HostCheck): Promise<globalThis.Response | UrlCheck> {
   let url = start;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const response = await fetch(url, {
@@ -59,7 +61,7 @@ async function fetchAllowlisted(start: URL): Promise<globalThis.Response | UrlCh
 
     const location = response.headers.get("location");
     if (!location) return { ok: false, status: 502, error: "Bad redirect" };
-    const next = checkImageUrl(new URL(location, url).toString());
+    const next = checkImageUrl(new URL(location, url).toString(), isAllowed);
     if (!next.ok) return { ok: false, status: 403, error: "Redirect target not allowed" };
     url = next.url;
   }
@@ -83,12 +85,40 @@ async function readCapped(body: ReadableStream<Uint8Array>, max: number): Promis
   return Buffer.concat(chunks);
 }
 
+/** Hosts the proxy may fetch from: the fixed list plus watched brand stores (loaded lazily from the DB). */
+async function currentHostCheck(): Promise<HostCheck> {
+  const { brandImageHostCheck } = await import("./imageHosts");
+  const brandHosts = await brandImageHostCheck();
+  return (host) => isAllowedImageHost(host) || brandHosts(host);
+}
+
+/**
+ * Checks that a photo URL actually serves a raster image, the same way the proxy
+ * would fetch it. Reads only the headers, then cancels the body.
+ */
+export async function probeImage(raw: string, isAllowed?: HostCheck): Promise<{ ok: boolean; reason?: string }> {
+  const allow = isAllowed ?? (await currentHostCheck());
+  const check = checkImageUrl(raw, allow);
+  if (!check.ok) return { ok: false, reason: check.error };
+  try {
+    const upstream = await fetchAllowlisted(check.url, allow);
+    if (!(upstream instanceof globalThis.Response)) return { ok: false, reason: upstream.ok ? "Proxy error" : upstream.error };
+    await upstream.body?.cancel().catch(() => {});
+    if (!upstream.ok) return { ok: false, reason: `HTTP ${upstream.status}` };
+    if (!normalizeContentType(upstream.headers.get("content-type"))) return { ok: false, reason: "Not a photo" };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error && err.name === "TimeoutError" ? "Timed out" : "Unreachable" };
+  }
+}
+
 export async function handleImageProxy(req: Request, res: Response) {
-  const check = checkImageUrl(req.query.url);
+  const isAllowed = await currentHostCheck();
+  const check = checkImageUrl(req.query.url, isAllowed);
   if (!check.ok) return res.status(check.status).json({ error: check.error });
 
   try {
-    const upstream = await fetchAllowlisted(check.url);
+    const upstream = await fetchAllowlisted(check.url, isAllowed);
     if (!(upstream instanceof globalThis.Response)) {
       return res.status(upstream.ok ? 502 : upstream.status).json({ error: upstream.ok ? "Proxy error" : upstream.error });
     }

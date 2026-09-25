@@ -10,7 +10,7 @@ import { eq, desc, sql, and, gte, count, inArray } from "drizzle-orm";
 import { brandSources, products, retailers, productOffers, productVideos, refreshLogs, priceHistory, favorites, notifications, productArticles, comparisons, clicks } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { searchInfluencersForProduct, searchProductImage, getPlaceholderImage, resolveProductImage } from "./services/perplexity";
-import { handleImageProxy } from "./lib/imageProxy";
+import { handleImageProxy, probeImage } from "./lib/imageProxy";
 import { generateProductTrustScore, getTrustLabel } from "./services/trustScore";
 import { generateProductReviewSummary } from "./services/reviewSynthesis";
 import { verifyProductImage } from "./services/imageVerification";
@@ -37,7 +37,10 @@ import {
   listCheckoutJobs,
   openCheckoutJob,
 } from "./checkout/service";
-import { runJob, recentRuns, listBrandSources, JOB_NAMES, type JobName } from "./ingest/jobs";
+import { runJob, recentRuns, listBrandSources, refreshProductOffers, JOB_NAMES, type JobName } from "./ingest/jobs";
+import { brandImageHostCheck, clearBrandImageHosts } from "./lib/imageHosts";
+import { isAllowedImageHost } from "./lib/imageProxyDomains";
+import { isPlaceholderImage } from "@shared/productImages";
 import { isGoogleShoppingConfigured } from "./ingest/googleShopping";
 import { isYouTubeConfigured } from "./ingest/youtube";
 import { normalizeDomain } from "./ingest/http";
@@ -1345,12 +1348,14 @@ export async function registerRoutes(
       currency: input.data.country === "IN" ? "INR" : "USD",
     }).onConflictDoNothing({ target: brandSources.domain }).returning();
     if (!source) return res.status(409).json({ error: "That store is already being watched" });
+    clearBrandImageHosts();
     res.status(201).json(source);
   });
 
   app.post("/api/admin/brand-sources/defaults", isAdmin, async (_req, res) => {
     const added = await db.insert(brandSources).values(DEFAULT_BRAND_SOURCES)
       .onConflictDoNothing({ target: brandSources.domain }).returning();
+    clearBrandImageHosts();
     res.json({ added: added.length });
   });
 
@@ -1360,7 +1365,80 @@ export async function registerRoutes(
     if (!id || !input.success) return res.status(400).json({ error: "Invalid request" });
     const [source] = await db.update(brandSources).set({ active: input.data.active }).where(eq(brandSources.id, id)).returning();
     if (!source) return res.sendStatus(404);
+    clearBrandImageHosts();
     res.json(source);
+  });
+
+  // ====== PRODUCT PHOTOS (operators) ======
+  // Products whose photo is missing, a placeholder, on a host we can't serve, or failed its last check.
+  app.get("/api/admin/photos", isAdmin, async (_req, res) => {
+    const all = await db.select().from(products).orderBy(sql`${products.launchedAt} desc nulls last`, products.id);
+    const brandHosts = await brandImageHostCheck();
+    const problemOf = (p: (typeof all)[number]): string | null => {
+      if (isPlaceholderImage(p.imageUrl)) return "No photo";
+      const host = (() => {
+        try {
+          return new URL(p.imageUrl).hostname;
+        } catch {
+          return null;
+        }
+      })();
+      if (!host || !(isAllowedImageHost(host) || brandHosts(host))) return "Photo host isn't allowed";
+      if (p.imageOk === false) return "Photo doesn't load";
+      return null;
+    };
+    const items = all
+      .map((p) => ({ ...p, problem: problemOf(p) }))
+      .filter((p) => p.problem)
+      .map(({ id, name, brand, country, category, imageUrl, imageSource, imageCheckedAt, problem }) => ({
+        id, name, brand, country, category, imageUrl, imageSource, imageCheckedAt, problem,
+      }));
+    res.json({
+      items,
+      counts: {
+        total: all.length,
+        needsPhoto: items.length,
+        unchecked: all.filter((p) => !p.imageCheckedAt && !isPlaceholderImage(p.imageUrl)).length,
+      },
+      canFind: isGoogleShoppingConfigured(),
+    });
+  });
+
+  // Set a product photo by URL. The photo must actually load through the proxy before it's saved.
+  app.patch("/api/admin/products/:id/image", isAdmin, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    const input = z.object({ imageUrl: z.string().trim().url().max(2000) }).safeParse(req.body);
+    if (!id || !input.success) return res.status(400).json({ error: "Enter a full https:// image link" });
+    const probe = await probeImage(input.data.imageUrl);
+    if (!probe.ok) {
+      const why = probe.reason === "Domain not allowed"
+        ? "photos from that website can't be shown. Use a link from the brand's own store (add it under Brand stores), Shopify, or a retailer's image server"
+        : probe.reason;
+      return res.status(422).json({ error: `That photo can't be used: ${why}` });
+    }
+    const [updated] = await db
+      .update(products)
+      .set({ imageUrl: input.data.imageUrl, imageSource: "manual", imageOk: true, imageCheckedAt: new Date() })
+      .where(eq(products.id, id))
+      .returning();
+    if (!updated) return res.sendStatus(404);
+    cache.invalidate(`product:${id}`);
+    cache.invalidatePattern("drops:");
+    res.json({ id, imageUrl: updated.imageUrl });
+  });
+
+  // Look for this product on Google Shopping and use a matched listing's photo.
+  app.post("/api/admin/products/:id/find-photo", isAdmin, async (req, res) => {
+    const id = parseProductId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid product" });
+    if (!isGoogleShoppingConfigured()) return res.status(503).json({ error: "Set SERPAPI_KEY to find photos automatically" });
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    if (!product) return res.sendStatus(404);
+    const { photoAdded } = await refreshProductOffers(product);
+    cache.invalidate(`product:${id}`);
+    cache.invalidatePattern("drops:");
+    const [after] = await db.select({ imageUrl: products.imageUrl }).from(products).where(eq(products.id, id));
+    res.json({ found: photoAdded > 0, imageUrl: after.imageUrl });
   });
 
   app.get("/api/admin/ingestion-runs", isAdmin, async (_req, res) => {
@@ -1370,6 +1448,7 @@ export async function registerRoutes(
         launches: true,
         prices: isGoogleShoppingConfigured(),
         content: isYouTubeConfigured(),
+        photos: true,
       },
     });
   });
@@ -1400,6 +1479,7 @@ export async function registerRoutes(
     runs.push(await runJob("launches", 9_000));
     runs.push(await runJob("prices", 7_000));
     runs.push(await runJob("content", 5_000));
+    runs.push(await runJob("photos", 3_000));
     const alerts = await checkPricesForAllTrackers();
     res.json({ runs, alerts });
   });

@@ -10,6 +10,7 @@ export interface ShoppingResultJson {
   extracted_price?: number;
   extracted_old_price?: number;
   second_hand_condition?: string;
+  thumbnail?: string;
 }
 
 export interface SellerOffer {
@@ -18,6 +19,8 @@ export interface SellerOffer {
   price: number;
   listPrice: number | null;
   url: string;
+  /** Listing photo (Google-hosted thumbnail), when the result has one. */
+  thumbnail: string | null;
 }
 
 // Listings that mention the product but aren't it.
@@ -60,6 +63,7 @@ export function pickSellerOffers(results: ShoppingResultJson[], brand: string, p
       price,
       listPrice: typeof old === "number" && old > price ? old : null,
       url,
+      thumbnail: httpsUrl(r.thumbnail),
     });
   }
   return Array.from(bySeller.values()).sort((a, b) => a.price - b.price);

@@ -13,7 +13,7 @@ const RUNS_KEY = ["/api/admin/ingestion-runs"];
 
 export interface RunsResponse {
   runs: IngestionRun[];
-  configured: { launches: boolean; prices: boolean; content: boolean };
+  configured: { launches: boolean; prices: boolean; content: boolean; photos: boolean };
 }
 
 export function useBrandSources() {
@@ -65,5 +65,56 @@ export function useToggleBrandSource() {
 }
 
 export function useRunJob() {
-  return useAdminMutation((job: "launches" | "prices" | "content") => post(`/api/admin/jobs/${job}`));
+  return useAdminMutation((job: "launches" | "prices" | "content" | "photos") => post(`/api/admin/jobs/${job}`));
+}
+
+// ---- Product photos ----
+
+export interface PhotoIssue {
+  id: number;
+  name: string;
+  brand: string;
+  country: string;
+  category: string;
+  imageUrl: string;
+  imageSource: string | null;
+  imageCheckedAt: string | null;
+  problem: string;
+}
+
+export interface PhotosResponse {
+  items: PhotoIssue[];
+  counts: { total: number; needsPhoto: number; unchecked: number };
+  canFind: boolean;
+}
+
+const PHOTOS_KEY = ["/api/admin/photos"];
+
+export function useAdminPhotos() {
+  return useQuery({ queryKey: PHOTOS_KEY, queryFn: async () => json<PhotosResponse>(await apiFetch(PHOTOS_KEY[0])) });
+}
+
+function usePhotoMutation<TVars>(request: (vars: TVars) => Promise<Response>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: TVars) => json<any>(await request(vars)),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PHOTOS_KEY });
+      queryClient.invalidateQueries({ queryKey: RUNS_KEY });
+    },
+  });
+}
+
+export function useFindPhoto() {
+  return usePhotoMutation((id: number) => post(`/api/admin/products/${id}/find-photo`));
+}
+
+export function useSetProductPhoto() {
+  return usePhotoMutation((v: { id: number; imageUrl: string }) =>
+    apiFetch(`/api/admin/products/${v.id}/image`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageUrl: v.imageUrl }),
+    }),
+  );
 }

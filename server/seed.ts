@@ -2,6 +2,7 @@ import { db } from "./db";
 import { isNull, sql } from "drizzle-orm";
 import { products, productOffers } from "@shared/schema";
 import { findOrCreateRetailer } from "./ingest/store";
+import { isPlaceholderImage } from "@shared/productImages";
 import { resolveProductImage } from "./services/perplexity";
 
 /**
@@ -311,6 +312,7 @@ export async function seedDatabase() {
         country: prod.country,
         description: prod.description,
         imageUrl: resolveProductImage(prod.brand, prod.name),
+        imageSource: isPlaceholderImage(resolveProductImage(prod.brand, prod.name)) ? null : "curated",
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: 0
@@ -355,6 +357,7 @@ export async function seedDatabase() {
         country: prod.country,
         description: prod.description,
         imageUrl: resolveProductImage(prod.brand, prod.name),
+        imageSource: isPlaceholderImage(resolveProductImage(prod.brand, prod.name)) ? null : "curated",
         whyTrending: prod.whyTrending,
         tags: prod.tags,
         influencerCount: 0

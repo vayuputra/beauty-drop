@@ -20,18 +20,9 @@ export interface ProductImageInfo {
   imageUrl?: string | null;
 }
 
-/** A URL is a "placeholder" (not a real product photo) if it's empty, a text
- *  placeholder service, or a generic stock-photo host we no longer trust. */
-export function isPlaceholderImage(url: string | null | undefined): boolean {
-  if (!url) return true;
-  const u = url.toLowerCase();
-  return (
-    u.includes("placehold.co") ||
-    u.includes("placeholder.com") ||
-    u.includes("unsplash.com") ||
-    u.includes("dummyimage.com")
-  );
-}
+import { isPlaceholderImage } from "@shared/productImages";
+
+export { isPlaceholderImage };
 
 /** Route real (remote) product images through our server-side proxy so retailer
  *  hot-linking / referrer checks don't break them. Local + data URIs pass through. */

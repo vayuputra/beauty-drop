@@ -6,7 +6,7 @@ name: Scheduled jobs
 #   Secrets   → CRON_SECRET  same value as the Vercel environment variable
 on:
   schedule:
-    - cron: "7 * * * *"       # launches + prices, hourly
+    - cron: "7 * * * *"       # launches + prices + photo checks, hourly
     - cron: "37 */3 * * *"    # creator videos, every 3 hours (YouTube quota)
     - cron: "52 */6 * * *"    # price-drop alerts, every 6 hours
   workflow_dispatch:
@@ -16,7 +16,7 @@ on:
         required: true
         default: launches
         type: choice
-        options: [launches, prices, content, price-check]
+        options: [launches, prices, content, photos, price-check]
 
 jobs:
   run:
@@ -30,7 +30,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "jobs=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "7 * * * *" ]; then
-            echo "jobs=launches prices" >> "$GITHUB_OUTPUT"
+            echo "jobs=launches prices photos" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "37 */3 * * *" ]; then
             echo "jobs=content" >> "$GITHUB_OUTPUT"
           else

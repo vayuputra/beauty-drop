@@ -204,7 +204,7 @@ describe.skipIf(!hasDb)("ingestion", () => {
     await admin.post("/api/admin/brand-sources").send({ name: "Dup", domain, country: "US" }).expect(409);
     const runs = await admin.get("/api/admin/ingestion-runs").expect(200);
     expect(runs.body.runs.length).toBeGreaterThan(0);
-    expect(runs.body.configured).toEqual({ launches: true, prices: true, content: true });
+    expect(runs.body.configured).toEqual({ launches: true, prices: true, content: true, photos: true });
   });
 
   it("cron ingestion requires the secret", async () => {

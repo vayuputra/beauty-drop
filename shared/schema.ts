@@ -62,6 +62,11 @@ export const products = pgTable("products", {
   launchedAt: timestamp("launched_at"),
   lastPriceCheckAt: timestamp("last_price_check_at"),
   lastContentCheckAt: timestamp("last_content_check_at"),
+  // Where imageUrl came from: "store" (brand catalog), "curated", "google_shopping" or "manual".
+  imageSource: text("image_source"),
+  // Result of the last server-side check that the photo actually loads (null = never checked).
+  imageOk: boolean("image_ok"),
+  imageCheckedAt: timestamp("image_checked_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("uq_products_source_key").on(table.sourceKey),

@@ -14,9 +14,11 @@ import { fetchShopifyProductsPage, isRecentLaunch, type ParsedProduct } from "./
 import { isGoogleShoppingConfigured, pickSellerOffers, searchGoogleShopping } from "./googleShopping";
 import { isYouTubeConfigured, pickProductVideos, searchYouTube } from "./youtube";
 import { canonicalSellerName, findOrCreateRetailer, removeDemoOffers, sameName, upsertOffer, upsertVariants } from "./store";
+import { isPlaceholderImage } from "@shared/productImages";
+import { checkImageUrl, probeImage } from "../lib/imageProxy";
 
-export type JobName = "launches" | "prices" | "content";
-export const JOB_NAMES: JobName[] = ["launches", "prices", "content"];
+export type JobName = "launches" | "prices" | "content" | "photos";
+export const JOB_NAMES: JobName[] = ["launches", "prices", "content", "photos"];
 
 export type Stats = Record<string, number>;
 
@@ -43,6 +45,8 @@ const config = () => ({
   priceMaxAgeHours: num(process.env.PRICE_MAX_AGE_HOURS, 12),
   contentBatch: num(process.env.CONTENT_BATCH_SIZE, 4),
   contentMaxAgeHours: num(process.env.CONTENT_MAX_AGE_HOURS, 72),
+  photoBatch: num(process.env.PHOTO_BATCH_SIZE, 30),
+  photoMaxAgeHours: num(process.env.PHOTO_MAX_AGE_HOURS, 168),
 });
 
 function invalidateCaches(productIds: number[]) {
@@ -75,7 +79,10 @@ async function applyBrandProduct(
         description: parsed.description,
         category: parsed.category,
         productUrl: parsed.productUrl,
-        ...(parsed.imageUrl ? { imageUrl: parsed.imageUrl } : {}),
+        // The store's photo wins, except over one an operator set by hand.
+        ...(parsed.imageUrl && existing.imageSource !== "manual" && parsed.imageUrl !== existing.imageUrl
+          ? { imageUrl: parsed.imageUrl, imageSource: "store", imageOk: null, imageCheckedAt: null }
+          : {}),
       })
       .where(eq(products.id, productId));
   } else {
@@ -88,6 +95,7 @@ async function applyBrandProduct(
         country: source.country,
         description: parsed.description,
         imageUrl: parsed.imageUrl ?? "",
+        imageSource: parsed.imageUrl ? "store" : null,
         sourceKey: parsed.sourceKey,
         brandSourceId: source.id,
         productUrl: parsed.productUrl,
@@ -169,7 +177,20 @@ async function productsDue(which: "price" | "content", maxAgeHours: number, limi
     .limit(limit);
 }
 
-export async function refreshProductOffers(product: Product): Promise<{ offers: number }> {
+/** A product needs a photo if it has none, only a placeholder, or its photo failed the last check. */
+export function needsPhoto(p: Pick<Product, "imageUrl" | "imageOk" | "imageSource">): boolean {
+  if (p.imageSource === "manual" && p.imageOk !== false) return false;
+  return isPlaceholderImage(p.imageUrl) || p.imageOk === false;
+}
+
+/** The brand's own listing photo if there is one, otherwise the cheapest seller's; proxy-servable hosts only. */
+export function pickListingPhoto(sellers: { seller: string; thumbnail: string | null }[], brand: string): string | null {
+  const usable = sellers.filter((s) => s.thumbnail && checkImageUrl(s.thumbnail).ok);
+  const own = usable.find((s) => sameName(canonicalSellerName(s.seller), brand));
+  return (own ?? usable[0])?.thumbnail ?? null;
+}
+
+export async function refreshProductOffers(product: Product): Promise<{ offers: number; photoAdded: number }> {
   const country = product.country === "IN" ? "IN" : "US";
   const results = await searchGoogleShopping(`${product.brand} ${product.name}`, country);
   const sellers = pickSellerOffers(results, product.brand, product.name);
@@ -194,12 +215,22 @@ export async function refreshProductOffers(product: Product): Promise<{ offers: 
     });
   }
   if (sellers.length > 0) await removeDemoOffers(product.id);
-  await db.update(products).set({ lastPriceCheckAt: new Date() }).where(eq(products.id, product.id));
-  return { offers: sellers.length };
+
+  // Fill in a photo for products that have none (or whose photo doesn't load),
+  // using a listing already matched to this exact product.
+  const photo = needsPhoto(product) ? pickListingPhoto(sellers, product.brand) : null;
+  await db
+    .update(products)
+    .set({
+      lastPriceCheckAt: new Date(),
+      ...(photo ? { imageUrl: photo, imageSource: "google_shopping", imageOk: null, imageCheckedAt: null } : {}),
+    })
+    .where(eq(products.id, product.id));
+  return { offers: sellers.length, photoAdded: photo ? 1 : 0 };
 }
 
 export async function refreshPrices(budget: Budget, opts: { productId?: number } = {}): Promise<Stats> {
-  const stats: Stats = { products: 0, offers: 0, failed: 0, skippedNotConfigured: 0 };
+  const stats: Stats = { products: 0, offers: 0, photosAdded: 0, failed: 0, skippedNotConfigured: 0 };
   if (!isGoogleShoppingConfigured()) {
     stats.skippedNotConfigured = 1;
     return stats;
@@ -211,8 +242,9 @@ export async function refreshPrices(budget: Budget, opts: { productId?: number }
     if (budget.expired) break;
     stats.products++;
     try {
-      const { offers } = await refreshProductOffers(product);
+      const { offers, photoAdded } = await refreshProductOffers(product);
       stats.offers += offers;
+      stats.photosAdded = (stats.photosAdded ?? 0) + photoAdded;
       touched.push(product.id);
     } catch (err) {
       stats.failed++;
@@ -289,6 +321,45 @@ export async function refreshContent(budget: Budget, opts: { productId?: number 
 }
 
 // ---------------------------------------------------------------------------
+// Photo checks: does each product's real photo actually load?
+// ---------------------------------------------------------------------------
+
+export async function checkPhotos(budget: Budget, opts: { productId?: number } = {}): Promise<Stats> {
+  const { photoBatch, photoMaxAgeHours } = config();
+  const stats: Stats = { checked: 0, ok: 0, broken: 0 };
+  const cutoff = new Date(Date.now() - photoMaxAgeHours * 3600_000);
+  const due = opts.productId
+    ? await db.select().from(products).where(eq(products.id, opts.productId))
+    : await db
+        .select()
+        .from(products)
+        .where(or(isNull(products.imageCheckedAt), lt(products.imageCheckedAt, cutoff)))
+        .orderBy(sql`${products.imageCheckedAt} asc nulls first`, sql`${products.launchedAt} desc nulls last`)
+        .limit(photoBatch);
+
+  const isAllowed = await (async () => {
+    const { brandImageHostCheck } = await import("../lib/imageHosts");
+    const { isAllowedImageHost } = await import("../lib/imageProxyDomains");
+    const brand = await brandImageHostCheck();
+    return (host: string) => isAllowedImageHost(host) || brand(host);
+  })();
+
+  // Five at a time keeps each run quick without hammering any one CDN.
+  for (let i = 0; i < due.length && !budget.expired; i += 5) {
+    await Promise.all(
+      due.slice(i, i + 5).map(async (p) => {
+        const result = isPlaceholderImage(p.imageUrl) ? { ok: false } : await probeImage(p.imageUrl, isAllowed);
+        stats.checked++;
+        if (result.ok) stats.ok++;
+        else stats.broken++;
+        await db.update(products).set({ imageOk: result.ok, imageCheckedAt: new Date() }).where(eq(products.id, p.id));
+      }),
+    );
+  }
+  return stats;
+}
+
+// ---------------------------------------------------------------------------
 // Run bookkeeping
 // ---------------------------------------------------------------------------
 
@@ -296,6 +367,7 @@ const RUNNERS: Record<JobName, (budget: Budget, opts: { productId?: number; sour
   launches: syncLaunches,
   prices: refreshPrices,
   content: refreshContent,
+  photos: checkPhotos,
 };
 
 /** Runs a job, recording it in ingestion_runs. Never throws; failures are recorded. */

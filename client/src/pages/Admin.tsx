@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowLeft, Play, Plus, Store, RefreshCw, CircleCheck, CircleAlert, CircleDashed } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
+import { MissingPhotos } from "@/components/admin/MissingPhotos";
 import { Loader } from "@/components/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ const JOBS = [
   { job: "launches", title: "New launches", detail: "Brand stores → new products, shades & official prices", env: null },
   { job: "prices", title: "Seller prices", detail: "Google Shopping → prices at other retailers", env: "SERPAPI_KEY" },
   { job: "content", title: "Creator videos", detail: "YouTube → review videos per product", env: "YOUTUBE_API_KEY" },
+  { job: "photos", title: "Photo checks", detail: "Checks each product photo still loads", env: null },
 ] as const;
 
 function statsLine(stats: Record<string, number> | null | undefined): string {
@@ -126,6 +128,8 @@ export default function AdminPage() {
             })}
           </div>
         </section>
+
+        <MissingPhotos />
 
         {/* Brand stores */}
         <section>

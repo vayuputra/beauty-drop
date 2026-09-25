@@ -19,6 +19,12 @@ export const ALLOWED_IMAGE_HOSTS: readonly string[] = [
   "images-na.ssl-images-amazon.com",
   "images.amazon.com",
   "cdn.shopify.com",
+  // Google Shopping thumbnails (used to fill in photos for products that have none)
+  "encrypted-tbn0.gstatic.com",
+  "encrypted-tbn1.gstatic.com",
+  "encrypted-tbn2.gstatic.com",
+  "encrypted-tbn3.gstatic.com",
+  "serpapi.com",
   "www.sephora.com",
   "sephora.com",
   "www.sephora.me",
