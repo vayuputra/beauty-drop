@@ -20,7 +20,9 @@ function resolveSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
   if (secret && secret.length >= 32) return secret;
   if (isProduction) {
-    throw new Error("SESSION_SECRET must be set to at least 32 characters in production");
+    if (!secret) throw new Error("SESSION_SECRET must be set in production");
+    console.warn("[auth] SESSION_SECRET is shorter than 32 characters; use a longer random value.");
+    return secret;
   }
   console.warn("[auth] SESSION_SECRET missing or short; using a random dev-only secret (sessions reset on restart).");
   return crypto.randomBytes(32).toString("hex");
